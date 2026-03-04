@@ -1,8 +1,9 @@
-# Codex Context Agents
 
 <p align="center">
   <img src="assets/codex-context-agents-logo.png" alt="Codex Context Agents logo" width="220" />
 </p>
+
+# Codex Context Agents
 
 `~/.config/codex-agents` is a files-first, git-backed state layer for Codex.
 
