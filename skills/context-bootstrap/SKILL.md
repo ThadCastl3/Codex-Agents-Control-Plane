@@ -98,3 +98,7 @@ Execution order:
 Merge outputs into the `Context` block.
 Do not print raw outputs from source skills.
 Only summarized results should appear.
+
+Future enhancement:
+A dedicated `patterns-check` skill may be introduced if reusable runbooks
+require specialized ranking or extraction separate from memory-retrieve.
