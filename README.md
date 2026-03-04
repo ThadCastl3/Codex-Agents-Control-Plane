@@ -82,7 +82,19 @@ If relevant decisions exist, they are constraints, not suggestions.
 - decisions: immutable (new file when superseding)
 - index: additive, minimal diff, no aggressive reordering
 
-### 4) Strict Secret Policy
+### 4) Automatic Index Hygiene
+
+Index discoverability is now default behavior at creation time:
+- `workflow-plan --to-pattern`: auto-registers the new pattern plan in `memory/index.md` (`## Patterns`)
+- `project-update`: when first scaffolding `overview.md`, auto-registers under `## Projects`
+- `memory-write`: when creating new `project`, `knowledge`, or `pattern` docs, auto-registers under the mapped section
+
+All of the above route index writes through:
+- `skills/memory-index-update/scripts/update_index.sh`
+
+If automatic index update cannot run, scripts print the exact fallback command to execute manually.
+
+### 5) Strict Secret Policy
 
 All write-side memory scripts enforce shared secret scanning.
 
@@ -109,11 +121,11 @@ Primary memory/continuity skills:
 | `decision-check` | Find applicable prior decisions before recommending changes | `skills/decision-check/scripts/check.sh` |
 | `decision-record` | Create immutable one-decision-per-file records | `skills/decision-record/scripts/record.sh` |
 | `memory-retrieve` | Pull minimal relevant memory context | `skills/memory-retrieve/scripts/retrieve.sh` |
-| `memory-write` | Generic structured memory writer | `skills/memory-write/scripts/write.sh` |
+| `memory-write` | Generic structured memory writer with automatic index registration for new anchors | `skills/memory-write/scripts/write.sh` |
 | `memory-index-update` | Keep `memory/index.md` discoverable and idempotent | `skills/memory-index-update/scripts/update_index.sh` |
 | `project-status` | Summarize project state from overview + log | `skills/project-status/scripts/status.sh` |
-| `project-update` | Append structured project log updates | `skills/project-update/scripts/update.sh` |
-| `workflow-plan` | Generate executable plan artifacts with verification + rollback | `skills/workflow-plan/scripts/plan.sh` |
+| `project-update` | Append structured project log updates and auto-index first-time project scaffolding | `skills/project-update/scripts/update.sh` |
+| `workflow-plan` | Generate executable plan artifacts with verification + rollback (auto-index in `--to-pattern` mode) | `skills/workflow-plan/scripts/plan.sh` |
 | `runbook-create` | Create reusable pattern/runbook docs and index them | `skills/runbook-create/scripts/create.sh` |
 | `secret-scan` | Standalone pass/redact/block scanner utility | `skills/secret-scan/scripts/scan.sh` |
 
@@ -192,6 +204,8 @@ skills/workflow-plan/scripts/plan.sh \
   --acceptance-criteria "tests pass,rollback documented"
 ```
 
+Pattern mode (`--to-pattern`) also updates `memory/index.md` automatically.
+
 ### Append project continuity update
 
 ```bash
@@ -202,6 +216,19 @@ skills/project-update/scripts/update.sh \
   --notes "Added script and report contract" \
   --next "Implement runbook-create,Run smoke tests"
 ```
+
+If this is the first update for a project and scaffolding is created, index registration is automatic.
+
+### Write durable knowledge with automatic index registration
+
+```bash
+skills/memory-write/scripts/write.sh \
+  --type knowledge \
+  --title "Token handling" \
+  --body "Prefer env vars or secret manager; never commit credentials."
+```
+
+New `knowledge`/`pattern`/`project` anchors are auto-indexed through `memory-index-update`.
 
 ### Create a reusable runbook and index it
 
