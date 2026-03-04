@@ -263,35 +263,38 @@ is_stopword() {
 
 build_tokens() {
   local q="$1"
-  local normalized token longest normalized_no_space
+  local normalized token normalized_no_space
   local seen_tmp
 
+  # token_mode is used elsewhere (e.g., to decide whether rg -w is safe)
   token_mode="strict"
   tokens=()
   strict_tokens=()
   fallback_tokens=()
-  longest=""
-  seen_tmp="$(mktemp)"
 
   normalized="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/ /g')"
+
+  seen_tmp="$(mktemp)"
   for token in $normalized; do
     [[ -n "$token" ]] || continue
 
+    # Dedup (preserve first-seen order)
     if grep -Fxq -- "$token" "$seen_tmp" 2>/dev/null; then
       continue
     fi
     printf '%s\n' "$token" >> "$seen_tmp"
-    if [[ "${#token}" -gt "${#longest}" ]]; then
-      longest="$token"
-    fi
 
+    # Fallback tokens: >=2 chars, no stopword filter
     if [[ "${#token}" -ge 2 ]]; then
       fallback_tokens+=("$token")
     fi
+
+    # Strict tokens: >=3 chars and not stopword
     if [[ "${#token}" -ge 3 ]] && ! is_stopword "$token"; then
       strict_tokens+=("$token")
     fi
   done
+  rm -f "$seen_tmp"
 
   if [[ "${#strict_tokens[@]}" -gt 0 ]]; then
     token_mode="strict"
@@ -301,18 +304,12 @@ build_tokens() {
     tokens=("${fallback_tokens[@]}")
   else
     token_mode="last-resort"
-    if [[ -n "$longest" ]]; then
-      tokens=("$longest")
-    else
-      normalized_no_space="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
-      if [[ -z "$normalized_no_space" ]]; then
-        normalized_no_space="0"
-      fi
-      tokens=("$normalized_no_space")
-    fi
+    # Last-resort: take the full normalized query with all non-alnum removed (no spaces),
+    # so the token is always matchable in both regex and index() checks.
+    normalized_no_space="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+//g')"
+    [[ -n "$normalized_no_space" ]] || normalized_no_space="0"
+    tokens=("$normalized_no_space")
   fi
-
-  rm -f "$seen_tmp"
 
   trace "token_mode=${token_mode} tokens=$(IFS=,; printf '%s' "${tokens[*]}")"
 }
