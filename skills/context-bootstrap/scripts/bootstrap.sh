@@ -296,6 +296,77 @@ max_items=7
 max_updates=5
 min_confidence="medium"
 scopes="$DEFAULT_SCOPES"
+scopes_explicit=0
+
+should_include_logs() {
+  local q="$1"
+  local qn
+  qn="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]')"
+
+  if [[ "$qn" == *"what happened recently"* || "$qn" == *"happened recently"* || "$qn" == *"recently"* || "$qn" == *"recent"* || "$qn" == *"timeline"* || "$qn" == *"history"* || "$qn" == *"yesterday"* || "$qn" == *"today"* ]]; then
+    return 0
+  fi
+
+  if printf '%s\n' "$qn" | grep -Eq '(^|[^a-z0-9])(log|logs)([^a-z0-9]|$)'; then
+    return 0
+  fi
+
+  return 1
+}
+
+is_runbook_intent() {
+  local q="$1"
+  local qn
+  qn="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]')"
+  printf '%s\n' "$qn" | grep -Eq '(^|[^a-z0-9])(how|steps|runbook|procedure|playbook|debug|triage|deploy)([^a-z0-9]|$)'
+}
+
+needs_project_context() {
+  local q="$1"
+  local qn
+  qn="$(printf '%s' "$q" | tr '[:upper:]' '[:lower:]')"
+  [[ "$qn" == *"where were we"* ]] && return 0
+  printf '%s\n' "$qn" | grep -Eq '(^|[^a-z0-9])(status|next|continue|blocker|roadmap)([^a-z0-9]|$)'
+}
+
+derive_retrieve_scopes() {
+  local q="$1"
+  local project_hint="$2"
+  local out=""
+
+  add_scope() {
+    local scope_name="$1"
+    if [[ ",$out," != *",$scope_name,"* ]]; then
+      if [[ -z "$out" ]]; then
+        out="$scope_name"
+      else
+        out="$out,$scope_name"
+      fi
+    fi
+  }
+
+  if is_runbook_intent "$q"; then
+    add_scope "patterns"
+    add_scope "decisions"
+    add_scope "knowledge"
+    if [[ -n "$project_hint" ]] || needs_project_context "$q"; then
+      add_scope "projects"
+    fi
+  else
+    # Architecture/default: constraints + project state + procedures + references.
+    add_scope "decisions"
+    add_scope "projects"
+    add_scope "patterns"
+    add_scope "knowledge"
+  fi
+
+  if should_include_logs "$q"; then
+    add_scope "logs"
+  fi
+
+  [[ -n "$out" ]] || out="decisions,projects,patterns,knowledge"
+  printf '%s\n' "$out"
+}
 
 if [[ $# -lt 1 ]]; then
   usage >&2
@@ -341,6 +412,7 @@ while [[ $# -gt 0 ]]; do
     --scopes)
       [[ $# -ge 2 ]] || die "missing value for --scopes"
       scopes="$(trim "$2")"
+      scopes_explicit=1
       shift 2
       ;;
     -h|--help)
@@ -374,6 +446,11 @@ if [[ -z "$project" ]]; then
   project="$(infer_project "$query" || true)"
 fi
 
+retrieve_scopes="$scopes"
+if [[ "$scopes_explicit" -eq 0 ]]; then
+  retrieve_scopes="$(derive_retrieve_scopes "$query" "$project")"
+fi
+
 constraints_tmp="$(mktemp)"
 constraints_seen_tmp="$(mktemp)"
 next_actions_tmp="$(mktemp)"
@@ -399,7 +476,7 @@ if [[ -n "$project" ]]; then
   project_out="$RUN_OUT"
 fi
 
-retrieve_cmd=("$RETRIEVE_SCRIPT" "$query" "--scopes" "$scopes" "--max-items" "$max_items")
+retrieve_cmd=("$RETRIEVE_SCRIPT" "$query" "--scopes" "$retrieve_scopes" "--max-items" "$max_items")
 if [[ -n "$since" ]]; then
   retrieve_cmd+=("--since" "$since")
 fi
