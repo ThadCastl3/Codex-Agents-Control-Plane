@@ -294,6 +294,16 @@ Write-side scripts inherit the same policy and support `--allow-redact`.
 5. Use relative memory paths in script reports.
 6. Do not commit secrets; redaction is required.
 
+## Template-Safe Memory Tracking
+
+This repository is intended to be shareable, so personal memory entries are ignored by default.
+
+- `.gitignore` ignores `memory/**` content to avoid committing local logs, decisions, project notes, or knowledge entries by accident.
+- The memory scaffold stays tracked: `memory/README.md`, `memory/index.md`, directory structure, and `.gitkeep` placeholders.
+- Result: collaborators can clone a clean, reusable agent state layer while each user keeps private/local memory history out of git.
+
+If you intentionally want to publish durable memory artifacts, add files explicitly with `git add -f <path>` and review them carefully before commit.
+
 ## Git Workflow
 
 Typical cycle:

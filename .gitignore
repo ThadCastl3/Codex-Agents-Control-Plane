@@ -1,0 +1,21 @@
+# macOS / editor noise
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Python cache artifacts from helper scripts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local env files
+.env
+.env.*
+
+# Keep memory scaffold tracked, but ignore all personal memory content
+memory/**
+!memory/README.md
+!memory/index.md
+!memory/**/
+!memory/**/.gitkeep
