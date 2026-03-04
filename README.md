@@ -47,6 +47,7 @@ This keeps Codex integration stable while all real state stays git-managed.
 │   └── patterns/
 ├── skills/
 │   ├── decision-check/
+│   ├── context-bootstrap/
 │   ├── decision-record/
 │   ├── memory-index-update/
 │   ├── memory-retrieve/
@@ -121,6 +122,7 @@ Primary memory/continuity skills:
 
 | Skill | Purpose | Script |
 |---|---|---|
+| `context-bootstrap` | Mandatory first pass for non-trivial tasks; orchestrates decision-check + project-status + memory-retrieve into one compact Context block | `skills/context-bootstrap/scripts/bootstrap.sh` |
 | `decision-check` | Find applicable prior decisions before recommending changes | `skills/decision-check/scripts/check.sh` |
 | `decision-record` | Create immutable one-decision-per-file records | `skills/decision-record/scripts/record.sh` |
 | `memory-retrieve` | Pull minimal relevant memory context | `skills/memory-retrieve/scripts/retrieve.sh` |

@@ -220,6 +220,7 @@ fi
 
 core_scripts=(
   "skills/secret-scan/scripts/scan.sh"
+  "skills/context-bootstrap/scripts/bootstrap.sh"
   "skills/memory-retrieve/scripts/retrieve.sh"
   "skills/memory-write/scripts/write.sh"
   "skills/decision-check/scripts/check.sh"
@@ -238,6 +239,7 @@ done
 syntax_targets=(
   "lib/secret_scan.sh"
   "skills/secret-scan/scripts/scan.sh"
+  "skills/context-bootstrap/scripts/bootstrap.sh"
   "skills/memory-retrieve/scripts/retrieve.sh"
   "skills/memory-write/scripts/write.sh"
   "skills/decision-check/scripts/check.sh"

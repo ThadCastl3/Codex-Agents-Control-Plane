@@ -332,7 +332,8 @@ candidates_file="$(mktemp)"
 sorted_file="$(mktemp)"
 selected_file="$(mktemp)"
 all_constraints_file="$(mktemp)"
-trap 'rm -f "$matches_file" "$candidates_file" "$sorted_file" "$selected_file" "$all_constraints_file"' EXIT
+constraints_final_file="$(mktemp)"
+trap 'rm -f "$matches_file" "$candidates_file" "$sorted_file" "$selected_file" "$all_constraints_file" "$constraints_final_file"' EXIT
 
 # File-name prefilter.
 while IFS= read -r -d '' f; do
@@ -492,10 +493,12 @@ done < "$selected_file"
 
 echo "Constraints to obey:"
 if [[ -s "$all_constraints_file" ]]; then
-  awk '!seen[$0]++' "$all_constraints_file" | while IFS= read -r c || [[ -n "$c" ]]; do
+  awk '!seen[$0]++' "$all_constraints_file" > "$constraints_final_file"
+  while IFS= read -r c || [[ -n "$c" ]]; do
     [[ -z "$c" ]] && continue
     echo "- ${c}"
-  done
+    echo "CONSTRAINT: ${c}"
+  done < "$constraints_final_file"
 else
   echo "- (No extracted constraints; inspect matched decisions directly.)"
 fi

@@ -34,6 +34,19 @@ Default output should include at least one of:
 - For risky actions, call out impact, rollback, and observability.
 - Avoid destructive operations unless explicitly requested.
 
+## Mandatory Context Bootstrap (Non-trivial tasks)
+
+Before responding to any non-trivial request (plans, architecture, debugging, continuing work, changing conventions):
+
+1) Run the `context-bootstrap` skill using a query derived from the user request.
+2) Summarize the retrieved constraints and relevant context in a short `Context` section.
+3) Only then propose recommendations or generate artifacts.
+
+Skip bootstrap only for:
+- purely conceptual questions not tied to this system
+- trivial formatting / rewriting
+- one-off examples with no interaction with local state
+
 ---
 
 # Persistent Memory System (Stateful Agent Layer)
@@ -152,6 +165,7 @@ Use skills to keep behavior deterministic and repeatable.
   - Use `decision-record` for durable decision files (one decision per file, immutable).
 - Use workflow skills for structured execution (plans, debugging, architecture).
 - For this memory layer, use these skills by default:
+  - `context-bootstrap`: mandatory first pass on non-trivial requests; orchestrates decision-check + project-status + memory-retrieve and returns compact context/evidence.
   - `decision-check`: first gate before architecture/workflow recommendations.
   - `memory-retrieve`: pull minimal relevant context for ongoing work.
   - `project-status`: rehydrate project goal/constraints/current status/next actions from project memory.

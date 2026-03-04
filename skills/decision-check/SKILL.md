@@ -59,10 +59,13 @@ The skill returns one of:
   - extracted constraints (1-5 bullets)
   - supersedes / superseded-by if present
 - A final section: `Constraints to obey:` (deduplicated bullets)
+- Additive machine-consumer lines for each deduplicated constraint:
+  - `CONSTRAINT: <text>`
 
 Rules:
 - Prefer fewer, higher-confidence matches.
 - Do not dump entire decision files; extract only the most relevant lines.
+- `CONSTRAINT:` lines are additive and do not replace human-readable bullets.
 - If multiple decisions conflict:
   - prefer newer decisions
   - prefer decisions with `Status: accepted`
