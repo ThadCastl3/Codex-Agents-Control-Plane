@@ -44,8 +44,13 @@ skills/memory-write/scripts/write.sh --type log --title "Linked ~/.codex/skills 
 - Decision files are immutable by convention: new decision => new file.
 
 ## Index Maintenance
-When new `project`, `knowledge`, or `pattern` docs are created, the script appends discoverability links to:
-- `memory/index.md` under `## Entries` (created if missing)
+When new `project`, `knowledge`, or `pattern` docs are created, the script invokes:
+- `skills/memory-index-update/scripts/update_index.sh`
+
+Behavior:
+- updates `memory/index.md` under `## Projects`, `## Patterns`, or `## Knowledge`
+- avoids duplicate entries (idempotent)
+- prints an exact fallback command if automatic index update cannot run
 
 ## Secret Handling
 Before writing, content is scanned and sensitive values are redacted (for example: bearer tokens, API key-style strings, private key blocks, credential assignments).

@@ -356,6 +356,8 @@ overview_file="$PROJECT_DIR/overview.md"
 log_file="$PROJECT_DIR/log.md"
 rel_overview="projects/${RESOLVED_PROJECT}/overview.md"
 rel_log="projects/${RESOLVED_PROJECT}/log.md"
+index_status="not-required"
+index_manual_command=""
 
 created_files=()
 if [[ ! -f "$overview_file" ]]; then
@@ -367,6 +369,37 @@ if [[ ! -f "$overview_file" ]]; then
     printf "Key Links:\n"
   } > "$overview_file"
   created_files+=("$rel_overview")
+
+  index_script="$REPO_ROOT/skills/memory-index-update/scripts/update_index.sh"
+  index_desc="Project continuity hub for ${RESOLVED_PROJECT}."
+  index_args=(
+    --change add-project
+    --path "$rel_overview"
+    --description "$index_desc"
+    --title "$RESOLVED_PROJECT"
+  )
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_args+=(--allow-redact)
+  fi
+
+  printf -v index_manual_command \
+    'MEMORY_ROOT=%q %q --change add-project --path %q --description %q --title %q' \
+    "$MEMORY_ROOT" "$index_script" "$rel_overview" "$index_desc" "$RESOLVED_PROJECT"
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_manual_command="$index_manual_command --allow-redact"
+  fi
+
+  if [[ -x "$index_script" ]]; then
+    index_output=""
+    if index_output="$(MEMORY_ROOT="$MEMORY_ROOT" "$index_script" "${index_args[@]}" 2>&1)"; then
+      index_status="$(printf '%s\n' "$index_output" | sed -nE 's/^- Status: `([^`]+)`/\1/p' | head -n1)"
+      [[ -n "$index_status" ]] || index_status="unknown"
+    else
+      index_status="manual-required"
+    fi
+  else
+    index_status="manual-required"
+  fi
 fi
 
 if [[ ! -f "$log_file" ]]; then
@@ -435,6 +468,7 @@ echo "## Entry"
 echo "- Heading: \`$entry_heading\`"
 echo "- Notes items: \`$notes_count\`"
 echo "- Next items: \`$next_count\`"
+echo "- Project index update: \`$index_status\`"
 
 echo
 echo "## Warnings"
@@ -445,4 +479,8 @@ else
     echo "- $w"
   done
   echo "- Recommendation: store secrets in environment variables or a secret manager."
+fi
+if [[ "$index_status" == "manual-required" ]]; then
+  echo "- Project index update could not be completed automatically."
+  echo "- Run: \`$index_manual_command\`"
 fi

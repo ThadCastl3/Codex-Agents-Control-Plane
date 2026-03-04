@@ -64,16 +64,6 @@ valid_date() {
   date_to_epoch "$1" >/dev/null 2>&1
 }
 
-has_fixed() {
-  local file="$1"
-  local pat="$2"
-  if command -v rg >/dev/null 2>&1; then
-    rg -Fq -- "$pat" "$file"
-  else
-    grep -Fq -- "$pat" "$file"
-  fi
-}
-
 normalize_tags() {
   local raw="$1"
   local clean="" part
@@ -178,29 +168,20 @@ ensure_memory_layout() {
     cat > "$root/index.md" <<'EOF'
 # Agent Memory Index
 
-This directory stores persistent operational knowledge.
+This index links durable memory anchors.
 
-Categories:
+## Projects
 
-logs/
-  chronological system observations
+## Patterns
 
-decisions/
-  architecture and workflow decisions
-
-projects/
-  ongoing initiatives
-
-knowledge/
-  general facts and references
-
-patterns/
-  reusable engineering patterns
+## Knowledge
 EOF
   fi
 }
 
 WRITE_REPORTS=()
+INDEX_REPORTS=()
+INDEX_FALLBACK_COMMANDS=()
 SUMMARY=""
 
 record_write() {
@@ -209,21 +190,68 @@ record_write() {
   WRITE_REPORTS+=("${path}|${action}")
 }
 
-append_index_link_if_missing() {
-  local rel_path="$1"
-  local label="$2"
-  local index_file="$MEMORY_ROOT/index.md"
+first_nonempty_line() {
+  local text="$1"
+  local line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(trim "$line")"
+    [[ -z "$line" ]] && continue
+    line="${line#- }"
+    line="$(printf '%s' "$line" | sed -E 's/^\[[ xX]\][[:space:]]*//')"
+    line="${line%%,*}"
+    line="$(trim "$line")"
+    [[ -n "$line" ]] || continue
+    printf '%s' "$line"
+    return 0
+  done <<< "$text"
+  printf ''
+}
 
-  if has_fixed "$index_file" "$rel_path"; then
+run_index_update() {
+  local change="$1"
+  local rel_path="$2"
+  local description="$3"
+  local display_title="$4"
+  local index_script index_output index_status index_manual_command
+  local -a index_args
+
+  index_script="$REPO_ROOT/skills/memory-index-update/scripts/update_index.sh"
+  index_args=(
+    --change "$change"
+    --path "$rel_path"
+    --description "$description"
+    --title "$display_title"
+  )
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_args+=(--allow-redact)
+  fi
+
+  printf -v index_manual_command \
+    'MEMORY_ROOT=%q %q --change %q --path %q --description %q --title %q' \
+    "$MEMORY_ROOT" "$index_script" "$change" "$rel_path" "$description" "$display_title"
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_manual_command="$index_manual_command --allow-redact"
+  fi
+
+  if [[ ! -x "$index_script" ]]; then
+    INDEX_REPORTS+=("${rel_path}|manual-required")
+    INDEX_FALLBACK_COMMANDS+=("$index_manual_command")
     return 0
   fi
 
-  if ! has_fixed "$index_file" "## Entries"; then
-    printf "\n## Entries\n" >> "$index_file"
+  index_output=""
+  if index_output="$(MEMORY_ROOT="$MEMORY_ROOT" "$index_script" "${index_args[@]}" 2>&1)"; then
+    index_status="$(printf '%s\n' "$index_output" | sed -nE 's/^- Status: `([^`]+)`/\1/p' | head -n1)"
+    [[ -n "$index_status" ]] || index_status="unknown"
+    INDEX_REPORTS+=("${rel_path}|${index_status}")
+    if [[ "$index_status" == "added" ]]; then
+      record_write "$MEMORY_ROOT/index.md" "appended (index link via memory-index-update)"
+    fi
+    return 0
   fi
 
-  printf -- "- [%s](%s) - %s\n" "$rel_path" "$rel_path" "$label" >> "$index_file"
-  record_write "$index_file" "appended (index link)"
+  INDEX_REPORTS+=("${rel_path}|manual-required")
+  INDEX_FALLBACK_COMMANDS+=("$index_manual_command")
 }
 
 entry_type=""
@@ -395,6 +423,7 @@ write_decision() {
 
 write_project() {
   local project_slug project_dir overview log_file notes next_block rel_overview
+  local index_desc
   project="$(trim "$project")"
   [[ -n "$project" ]] || die "--project is required for type=project"
 
@@ -413,7 +442,8 @@ write_project() {
       printf "Constraints:\n"
     } > "$overview"
     record_write "$overview" "created"
-    append_index_link_if_missing "$rel_overview" "Project: $project"
+    index_desc="Project continuity hub for ${project}."
+    run_index_update "add-project" "$rel_overview" "$index_desc" "$project"
   fi
 
   if [[ -f "$log_file" ]]; then
@@ -450,7 +480,7 @@ write_project() {
 }
 
 write_knowledge() {
-  local slug file rel_file
+  local slug file rel_file desc
   slug="$(slugify "$title")"
   file="$MEMORY_ROOT/knowledge/${slug}.md"
   rel_file="knowledge/${slug}.md"
@@ -470,7 +500,9 @@ write_knowledge() {
       fi
     } > "$file"
     record_write "$file" "created"
-    append_index_link_if_missing "$rel_file" "$title"
+    desc="$(first_nonempty_line "$body")"
+    [[ -n "$desc" ]] || desc="Stable knowledge note."
+    run_index_update "add-knowledge" "$rel_file" "$desc" "$title"
     SUMMARY="Created a stable knowledge note."
     return
   fi
@@ -491,7 +523,7 @@ write_knowledge() {
 }
 
 write_pattern() {
-  local slug file rel_file notes
+  local slug file rel_file notes desc
   slug="$(slugify "$title")"
   file="$MEMORY_ROOT/patterns/${slug}.md"
   rel_file="patterns/${slug}.md"
@@ -520,7 +552,9 @@ write_pattern() {
       fi
     } > "$file"
     record_write "$file" "created"
-    append_index_link_if_missing "$rel_file" "$title"
+    desc="$(first_nonempty_line "$body")"
+    [[ -n "$desc" ]] || desc="Reusable pattern/runbook."
+    run_index_update "add-pattern" "$rel_file" "$desc" "$title"
     SUMMARY="Created a reusable pattern/runbook template."
     return
   fi
@@ -567,6 +601,26 @@ done
 echo
 echo "## Summary"
 echo "- $SUMMARY"
+
+echo
+echo "## Index Updates"
+if [[ "${#INDEX_REPORTS[@]}" -eq 0 ]]; then
+  echo "- None"
+else
+  for item in "${INDEX_REPORTS[@]}"; do
+    path="${item%%|*}"
+    status="${item##*|}"
+    echo "- \`${path}\`: \`${status}\`"
+  done
+fi
+
+if [[ "${#INDEX_FALLBACK_COMMANDS[@]}" -gt 0 ]]; then
+  echo
+  echo "## Index Follow-up"
+  for cmd in "${INDEX_FALLBACK_COMMANDS[@]}"; do
+    echo "- Run: \`$cmd\`"
+  done
+fi
 
 echo
 echo "## Redactions"

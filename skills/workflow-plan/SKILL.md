@@ -45,10 +45,12 @@ Optional:
 The skill:
 - writes one plan markdown file
 - in project mode, appends a project-log pointer via `project-update`
+- in pattern mode, updates `memory/index.md` via `memory-index-update`
 - returns:
   - created plan path (relative)
   - plan heading
   - pointer update status (project mode)
+  - index update status (pattern mode)
   - warnings/redactions
 
 Rules:

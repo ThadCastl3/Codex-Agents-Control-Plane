@@ -301,6 +301,8 @@ parse_items_to_file "$acceptance" "$acceptance_file"
 
 heading="# $title"
 pointer_status="not-applicable"
+index_status="not-applicable"
+index_manual_command=""
 plan_rel=""
 plan_path=""
 
@@ -401,7 +403,38 @@ fi
   printf -- "- Scope changes may require a follow-up decision record.\n"
 } > "$plan_path"
 
-if [[ "$to_pattern" -eq 0 ]]; then
+if [[ "$to_pattern" -eq 1 ]]; then
+  index_script="$REPO_ROOT/skills/memory-index-update/scripts/update_index.sh"
+  index_desc="Workflow plan pattern for: $goal"
+  index_args=(
+    --change add-pattern
+    --path "$plan_rel"
+    --description "$index_desc"
+    --title "$title"
+  )
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_args+=(--allow-redact)
+  fi
+
+  printf -v index_manual_command \
+    'MEMORY_ROOT=%q %q --change add-pattern --path %q --description %q --title %q' \
+    "$MEMORY_ROOT" "$index_script" "$plan_rel" "$index_desc" "$title"
+  if [[ "$ALLOW_REDACT" -eq 1 ]]; then
+    index_manual_command="$index_manual_command --allow-redact"
+  fi
+
+  if [[ -x "$index_script" ]]; then
+    index_output=""
+    if index_output="$(MEMORY_ROOT="$MEMORY_ROOT" "$index_script" "${index_args[@]}" 2>&1)"; then
+      index_status="$(printf '%s\n' "$index_output" | sed -nE 's/^- Status: `([^`]+)`/\1/p' | head -n1)"
+      [[ -n "$index_status" ]] || index_status="unknown"
+    else
+      index_status="manual-required"
+    fi
+  else
+    index_status="manual-required"
+  fi
+else
   project_update_script="$REPO_ROOT/skills/project-update/scripts/update.sh"
   [[ -x "$project_update_script" ]] || die "project-update script missing or not executable: $project_update_script"
 
@@ -444,6 +477,7 @@ if [[ "$to_pattern" -eq 0 ]]; then
   echo "- Project log pointer: \`$pointer_status\`"
 else
   echo "- Project log pointer: \`not-applicable\`"
+  echo "- Pattern index update: \`$index_status\`"
 fi
 
 echo
@@ -455,4 +489,8 @@ else
     echo "- $w"
   done
   echo "- Recommendation: store secrets in environment variables or a secret manager."
+fi
+if [[ "$to_pattern" -eq 1 && "$index_status" == "manual-required" ]]; then
+  echo "- Pattern index update could not be completed automatically."
+  echo "- Run: \`$index_manual_command\`"
 fi

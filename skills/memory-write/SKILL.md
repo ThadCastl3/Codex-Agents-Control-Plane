@@ -154,7 +154,8 @@ Use for:
 
 ## Index Maintenance
 When a new project, pattern, or knowledge doc is created:
-- ensure it is discoverable from `memory/index.md` by adding a short link entry if missing.
+- invoke `skills/memory-index-update/scripts/update_index.sh` to ensure discoverability.
+- if automatic update cannot run, output the exact fallback command to execute.
 - do not reorder index aggressively; append new links.
 
 ## Secret Handling (Required)

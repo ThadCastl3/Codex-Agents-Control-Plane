@@ -53,10 +53,12 @@ Optional:
 ## Output (Contract)
 The skill:
 - appends exactly one new entry to `memory/projects/<project>/log.md`
+- when `overview.md` is created, updates `memory/index.md` via `memory-index-update`
 - returns:
   - the updated log file path (relative to memory root)
   - the heading of the entry written
   - any scaffolding created (overview/log)
+  - project index update status when scaffolding occurs
 
 Rules:
 - Append-only to log.md.
