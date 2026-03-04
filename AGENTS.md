@@ -99,11 +99,25 @@ Before proposing a plan for ongoing work:
 2) Check relevant `decisions/` and `projects/`
 3) Summarize relevant findings and how they affect the recommendation
 
+## Decision Enforcement Policy (Required)
+
+Before making architecture or workflow recommendations:
+1) Run `skills/decision-check/scripts/check.sh "<task-derived query>"`.
+2) If existing decisions apply, obey extracted constraints and cite the decision path(s).
+3) If no relevant decision is found, explicitly state: `No relevant decision found.`
+4) If a new durable constraint is chosen, record it with `skills/decision-record/scripts/record.sh`.
+
 ## Append-Only Conventions
 
 - Prefer append-only edits in logs and project logs.
 - Decisions should be immutable; if a decision changes, create a new decision file that supersedes the old one.
 - Always include dates in filenames and headers where applicable.
+
+## Index Hygiene
+
+- Keep `memory/index.md` focused on durable anchors.
+- Use `skills/memory-index-update/scripts/update_index.sh` when creating new `projects/`, `patterns/`, or `knowledge/` pages.
+- Do not index `logs/`.
 
 ---
 
@@ -125,8 +139,15 @@ Codex uses skill metadata for discovery and loads full instructions only when ne
 Use skills to keep behavior deterministic and repeatable.
 
 - Prefer a **single memory write skill** to reduce chaos.
-  - The memory write skill decides where a note/decision/project update belongs.
+  - Use `memory-write` for generic notes/project/knowledge/pattern writes.
+  - Use `decision-record` for durable decision files (one decision per file, immutable).
 - Use workflow skills for structured execution (plans, debugging, architecture).
+- For this memory layer, use these skills by default:
+  - `decision-check`: first gate before architecture/workflow recommendations.
+  - `memory-retrieve`: pull minimal relevant context for ongoing work.
+  - `decision-record`: write immutable one-decision-per-file ADR-style records.
+  - `memory-write`: generic durable memory writes with schema + redaction.
+  - `memory-index-update`: keep index links current for projects/patterns/knowledge.
 
 Skills should:
 - be deterministic
