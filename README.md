@@ -1,4 +1,8 @@
-# Codex Agents
+# Codex Context Agents
+
+<p align="center">
+  <img src="assets/codex-context-agents-logo.png" alt="Codex Context Agents logo" width="220" />
+</p>
 
 `~/.config/codex-agents` is a files-first, git-backed state layer for Codex.
 
@@ -8,6 +12,16 @@ It centralizes:
 - persistent memory
 
 The goal is deterministic behavior with safe rollback.
+
+## Official Codex Docs
+
+- [Codex Overview](https://developers.openai.com/codex/)
+- [Codex CLI](https://developers.openai.com/codex/cli)
+- [Codex IDE Extension](https://developers.openai.com/codex/ide)
+- [Codex GitHub Integration](https://developers.openai.com/codex/github)
+- [AGENTS.md for Codex](https://developers.openai.com/codex/agents.md)
+- [Codex Skills](https://developers.openai.com/codex/skills)
+- [Codex Cloud Environments](https://developers.openai.com/codex/cloud/environments)
 
 ## Why This Repo Exists
 
