@@ -38,6 +38,7 @@ This keeps Codex integration stable while all real state stays git-managed.
 ├── lib/
 │   └── secret_scan.sh
 ├── memory/
+│   ├── README.md
 │   ├── index.md
 │   ├── logs/
 │   ├── decisions/
@@ -58,6 +59,8 @@ This keeps Codex integration stable while all real state stays git-managed.
 │   ├── security-best-practices/
 │   └── gh-address-comments/
 ├── bin/
+│   ├── doctor.sh
+│   └── install.sh
 └── templates/
 ```
 
@@ -137,6 +140,7 @@ Additional utility skills:
 
 Memory root: `memory/`
 
+- `README.md`: operational conventions for cadence, naming, and index policy
 - `index.md`: table of contents for durable anchors
 - `logs/`: chronological notes
 - `decisions/`: architectural/workflow constraints
@@ -146,17 +150,33 @@ Memory root: `memory/`
 
 ## Quickstart
 
-### 1) Link Codex paths to this repo
+### 1) Install symlinks and run health checks
+
+```bash
+bin/install.sh
+```
+
+`bin/install.sh` runs `bin/doctor.sh` by default after symlink reconciliation.
+
+### 2) Run doctor explicitly (optional but recommended in CI and troubleshooting)
+
+```bash
+bin/doctor.sh
+```
+
+### 3) Manual fallback symlink commands (if needed)
 
 ```bash
 ln -sfn ~/.config/codex-agents/AGENTS.md ~/.codex/AGENTS.md
 ln -sfn ~/.config/codex-agents/skills ~/.codex/skills
 ```
 
-### 2) Validate shell scripts
+### 4) Validate shell scripts
 
 ```bash
 bash -n \
+  bin/install.sh \
+  bin/doctor.sh \
   lib/secret_scan.sh \
   skills/secret-scan/scripts/scan.sh \
   skills/memory-retrieve/scripts/retrieve.sh \
@@ -170,13 +190,20 @@ bash -n \
   skills/runbook-create/scripts/create.sh
 ```
 
-### 3) Run in temp memory for safe testing
+### 5) Run in temp memory for safe testing
 
 ```bash
 TMP_ROOT="$(mktemp -d)"
 export MEMORY_ROOT="$TMP_ROOT/memory"
 mkdir -p "$MEMORY_ROOT"
 ```
+
+## Operator Workflow
+
+- Use `bin/install.sh` to reconcile expected symlinks with backup-and-replace safety.
+- Use `bin/doctor.sh` to detect drift; it exits non-zero when checks fail.
+- Prefer `bin/install.sh --dry-run` before first-time setup on unknown machines.
+- Use `bin/install.sh --skip-doctor` only when sequencing setup manually.
 
 ## Common Workflows
 

@@ -1,20 +1,9 @@
 # Agent Memory Index
 
-This directory stores persistent operational knowledge.
+This index links durable memory anchors for fast retrieval.
 
-Categories:
+## Projects
 
-logs/
-  chronological system observations
+## Patterns
 
-decisions/
-  architecture and workflow decisions
-
-projects/
-  ongoing initiatives
-
-knowledge/
-  general facts and references
-
-patterns/
-  reusable engineering patterns
+## Knowledge
