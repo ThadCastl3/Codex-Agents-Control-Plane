@@ -79,13 +79,14 @@ Formatting rules:
 ## Secret Handling
 Before writing, scan all content for likely secrets.
 If found:
-- redact sensitive substrings
-- include `[REDACTED]` in-place
-- return a warning in output
+- high-confidence findings: block write by default
+- low-confidence findings: redact and continue
+- `--allow-redact` overrides blocked writes and proceeds with redaction
+- include `[REDACTED]` in-place and return warnings in output
 
 ## Implementation
 Primary entrypoint:
-- `scripts/record.sh --title "<title>" --decision "<one sentence>" --context "<bullets>" --why "<bullets>" --tradeoffs "<bullets>" --followups "<items>" [--supersedes "<path>"] [--status accepted] [--tags "t1,t2"] [--date YYYY-MM-DD]`
+- `scripts/record.sh --title "<title>" --decision "<one sentence>" --context "<bullets>" --why "<bullets>" --tradeoffs "<bullets>" --followups "<items>" [--supersedes "<path>"] [--status accepted] [--tags "t1,t2"] [--date YYYY-MM-DD] [--allow-redact]`
 
 Script behavior:
 - creates directories if missing

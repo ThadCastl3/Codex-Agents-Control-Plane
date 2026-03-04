@@ -87,9 +87,16 @@ If a matching path exists with a different description:
 - instead, add a second bullet only if the title differs significantly
 - otherwise, return "already present" and suggest a manual edit
 
+## Secret Handling
+Scan write inputs (`description`, `title`, optional `section`) before updating index.
+If a likely secret is detected:
+- high-confidence findings: block write by default
+- low-confidence findings: redact and continue
+- `--allow-redact` overrides blocked writes and proceeds with redaction
+
 ## Implementation
 Primary entrypoint:
-- `scripts/update_index.sh --change <add-project|add-pattern|add-knowledge> --path "<relative-path>" --description "<one line>" [--title "<title>"]`
+- `scripts/update_index.sh --change <add-project|add-pattern|add-knowledge> --path "<relative-path>" --description "<one line>" [--title "<title>"] [--allow-redact]`
 
 The script should:
 - validate path exists under memory root

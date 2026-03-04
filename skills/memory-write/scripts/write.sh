@@ -3,12 +3,16 @@ set -euo pipefail
 
 export LC_ALL=C
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$REPO_ROOT/lib/secret_scan.sh"
+
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  write.sh --type <type> --title "<title>" [--body "<text>"] [--project "<name>"] [--status "<status>"] [--next "<items>"] [--tags "<t1,t2>"] [--date YYYY-MM-DD]
+  write.sh --type <type> --title "<title>" [--body "<text>"] [--project "<name>"] [--status "<status>"] [--next "<items>"] [--tags "<t1,t2>"] [--date YYYY-MM-DD] [--allow-redact]
 
 Types:
   log | decision | project | knowledge | pattern
@@ -111,7 +115,7 @@ format_list() {
 }
 
 REDACTION_NOTES=()
-REDACTED_TEXT=""
+ALLOW_REDACT=0
 
 add_redaction_note() {
   local note="$1"
@@ -124,59 +128,43 @@ add_redaction_note() {
   REDACTION_NOTES+=("$note")
 }
 
-redact_text() {
-  local txt="$1"
-  local out="$1"
-
-  if printf '%s' "$out" | grep -Eq -- '-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
-    add_redaction_note "Private key block redacted."
-    out="$(printf '%s\n' "$out" | awk '
-      BEGIN { in_key=0 }
-      /-----BEGIN [A-Z ]*PRIVATE KEY-----/ { if (!in_key) print "[REDACTED PRIVATE KEY BLOCK]"; in_key=1; next }
-      /-----END [A-Z ]*PRIVATE KEY-----/ { in_key=0; next }
-      { if (!in_key) print }
-    ')"
+append_scan_findings() {
+  if [[ -z "$SCAN_FINDINGS" ]]; then
+    return 0
   fi
-
-  if printf '%s' "$out" | grep -Eiq -- 'Bearer[[:space:]]+[A-Za-z0-9._-]+'; then
-    add_redaction_note "Bearer token redacted."
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'AKIA[0-9A-Z]{16}'; then
-    add_redaction_note "AWS access key redacted."
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'gh[pousr]_[A-Za-z0-9]{20,}'; then
-    add_redaction_note "GitHub token redacted."
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'sk-[A-Za-z0-9]{20,}'; then
-    add_redaction_note "API key-style token redacted."
-  fi
-  if printf '%s' "$out" | grep -Eiq -- '\beyJ[A-Za-z0-9._-]{10,}\b'; then
-    add_redaction_note "JWT-like token redacted."
-  fi
-  if printf '%s' "$out" | grep -Eiq -- '([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+'; then
-    add_redaction_note "Secret assignment value redacted."
-  fi
-
-  out="$(printf '%s' "$out" | sed -E \
-    -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-    -e 's/(AKIA[0-9A-Z]{16})/[REDACTED]/g' \
-    -e 's/(gh[pousr]_[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/(sk-[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/\beyJ[A-Za-z0-9._-]{10,}\b/[REDACTED]/g' \
-    -e 's/\b[A-Fa-f0-9]{32,}\b/[REDACTED]/g' \
-    -e 's/([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=[REDACTED]/g')"
-
-  REDACTED_TEXT="$out"
+  while IFS= read -r f || [[ -n "$f" ]]; do
+    [[ -n "$f" ]] || continue
+    add_redaction_note "$f"
+  done <<< "$SCAN_FINDINGS"
 }
 
 sanitize_into() {
   local target_var="$1"
   local name="$2"
   local raw="$3"
+  local rc=0
   local out
 
-  redact_text "$raw"
-  out="$REDACTED_TEXT"
+  if secret_scan_text_write "$raw" "$ALLOW_REDACT"; then
+    :
+  else
+    rc=$?
+    if [[ "$rc" -eq 3 ]]; then
+      echo "Error: high-confidence secret detected in field: $name" >&2
+      if [[ -n "$SCAN_FINDINGS" ]]; then
+        while IFS= read -r f || [[ -n "$f" ]]; do
+          [[ -n "$f" ]] || continue
+          echo " - $f" >&2
+        done <<< "$SCAN_FINDINGS"
+      fi
+      echo "Re-run with --allow-redact to continue with redacted values." >&2
+      exit 3
+    fi
+    die "secret scan failed for field: $name"
+  fi
+
+  out="$SCAN_REDACTED_TEXT"
+  append_scan_findings
   if [[ "$out" != "$raw" ]]; then
     add_redaction_note "Sensitive content redacted in field: ${name}."
   fi
@@ -293,6 +281,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "missing value for --date"
       entry_date="$2"
       shift 2
+      ;;
+    --allow-redact)
+      ALLOW_REDACT=1
+      shift
       ;;
     -h|--help)
       usage

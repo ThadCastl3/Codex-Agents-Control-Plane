@@ -160,14 +160,14 @@ When a new project, pattern, or knowledge doc is created:
 ## Secret Handling (Required)
 Before writing:
 - scan content for likely secrets (API keys, bearer tokens, private keys).
-- if found:
-  - redact the sensitive portion
-  - note "REDACTED" in output
-  - suggest storing secrets in env vars or a secret manager
+- high-confidence findings: block write by default
+- low-confidence findings: redact and continue
+- `--allow-redact` overrides blocked writes and proceeds with redaction
+- always note redactions in output and recommend env vars or a secret manager
 
 ## Implementation
 Primary entrypoint:
-- `scripts/write.sh --type <type> --title "<title>" [--body "<text>"] [--project "<name>"] [--status "<status>"] [--next "<items>"] [--tags "<t1,t2>"] [--date YYYY-MM-DD]`
+- `scripts/write.sh --type <type> --title "<title>" [--body "<text>"] [--project "<name>"] [--status "<status>"] [--next "<items>"] [--tags "<t1,t2>"] [--date YYYY-MM-DD] [--allow-redact]`
 
 The script should:
 - create missing directories/files

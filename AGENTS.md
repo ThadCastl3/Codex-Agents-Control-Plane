@@ -92,6 +92,14 @@ Do NOT write:
 - transient status updates with no future value
 - speculative ideas unless explicitly labeled and requested
 
+### Write-Side Secret Enforcement (Required)
+
+- All memory write-side scripts must run `secret-scan` policy checks before writing.
+- High-confidence secret findings: block writes by default.
+- Low-confidence findings: redact in place and continue.
+- `--allow-redact` is the only override for blocked writes and must be explicit per command.
+- Read-side memory skills remain redact-only and non-blocking.
+
 ## Memory Read Policy
 
 Before proposing a plan for ongoing work:
@@ -139,15 +147,21 @@ Codex uses skill metadata for discovery and loads full instructions only when ne
 Use skills to keep behavior deterministic and repeatable.
 
 - Prefer a **single memory write skill** to reduce chaos.
-  - Use `memory-write` for generic notes/project/knowledge/pattern writes.
+  - Use `memory-write` for generic notes/knowledge/pattern writes.
+  - Use `project-update` for structured append-only project log updates and project scaffolding.
   - Use `decision-record` for durable decision files (one decision per file, immutable).
 - Use workflow skills for structured execution (plans, debugging, architecture).
 - For this memory layer, use these skills by default:
   - `decision-check`: first gate before architecture/workflow recommendations.
   - `memory-retrieve`: pull minimal relevant context for ongoing work.
+  - `project-status`: rehydrate project goal/constraints/current status/next actions from project memory.
+  - `project-update`: append structured project updates and bootstrap overview/log files when missing.
   - `decision-record`: write immutable one-decision-per-file ADR-style records.
   - `memory-write`: generic durable memory writes with schema + redaction.
   - `memory-index-update`: keep index links current for projects/patterns/knowledge.
+  - `workflow-plan`: generate executable plans with verification + rollback and project-log pointers.
+  - `runbook-create`: capture reusable procedures under `memory/patterns/` and index them.
+  - `secret-scan`: enforce deterministic pass/redact/block policy for write safety.
 
 Skills should:
 - be deterministic

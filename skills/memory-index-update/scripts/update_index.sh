@@ -3,12 +3,16 @@ set -euo pipefail
 
 export LC_ALL=C
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+source "$REPO_ROOT/lib/secret_scan.sh"
+
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
 usage() {
   cat <<'EOF'
 Usage:
-  update_index.sh --change <add-project|add-pattern|add-knowledge> --path "<relative-path>" --description "<one line>" [--title "<title>"] [--section "<Section Name>"] [--date YYYY-MM-DD]
+  update_index.sh --change <add-project|add-pattern|add-knowledge> --path "<relative-path>" --description "<one line>" [--title "<title>"] [--section "<Section Name>"] [--date YYYY-MM-DD] [--allow-redact]
 
 Notes:
   - Path must exist under memory root.
@@ -20,6 +24,59 @@ EOF
 die() {
   echo "Error: $*" >&2
   exit 2
+}
+
+REDACTION_NOTES=()
+ALLOW_REDACT=0
+
+add_redaction_note() {
+  local note="$1"
+  local existing
+  for existing in "${REDACTION_NOTES[@]:-}"; do
+    [[ "$existing" == "$note" ]] && return 0
+  done
+  REDACTION_NOTES+=("$note")
+}
+
+append_scan_findings() {
+  if [[ -z "$SCAN_FINDINGS" ]]; then
+    return 0
+  fi
+  while IFS= read -r f || [[ -n "$f" ]]; do
+    [[ -n "$f" ]] || continue
+    add_redaction_note "$f"
+  done <<< "$SCAN_FINDINGS"
+}
+
+sanitize_into() {
+  local target_var="$1"
+  local field_name="$2"
+  local raw="$3"
+  local out rc=0
+
+  if secret_scan_text_write "$raw" "$ALLOW_REDACT"; then
+    :
+  else
+    rc=$?
+    if [[ "$rc" -eq 3 ]]; then
+      echo "Error: high-confidence secret detected in field: $field_name" >&2
+      if [[ -n "$SCAN_FINDINGS" ]]; then
+        while IFS= read -r f || [[ -n "$f" ]]; do
+          [[ -n "$f" ]] || continue
+          echo " - $f" >&2
+        done <<< "$SCAN_FINDINGS"
+      fi
+      echo "Re-run with --allow-redact to continue with redacted values." >&2
+      exit 3
+    fi
+    die "secret scan failed for field: $field_name"
+  fi
+  out="$SCAN_REDACTED_TEXT"
+  append_scan_findings
+  if [[ "$out" != "$raw" ]]; then
+    add_redaction_note "Sensitive content redacted in field: ${field_name}."
+  fi
+  printf -v "$target_var" '%s' "$out"
 }
 
 trim() {
@@ -211,6 +268,10 @@ while [[ $# -gt 0 ]]; do
       entry_date="$2"
       shift 2
       ;;
+    --allow-redact)
+      ALLOW_REDACT=1
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
@@ -233,6 +294,10 @@ section_override="$(trim "$section_override")"
 
 [[ -n "$rel_path" ]] || die "--path is required"
 [[ -n "$description" ]] || die "--description is required"
+
+sanitize_into description "description" "$description"
+sanitize_into title "title" "$title"
+sanitize_into section_override "section" "$section_override"
 
 if [[ -z "$entry_date" ]]; then
   entry_date="$(date "+%Y-%m-%d")"
@@ -389,4 +454,13 @@ if [[ -n "$note" ]]; then
   echo "- $note"
 else
   echo "- Entry was appended without reordering existing index content."
+fi
+echo
+echo "## Warnings"
+if [[ "${#REDACTION_NOTES[@]}" -eq 0 ]]; then
+  echo "- none"
+else
+  for w in "${REDACTION_NOTES[@]}"; do
+    echo "- $w"
+  done
 fi
