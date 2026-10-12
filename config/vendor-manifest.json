@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "cli_version": "0.159.2",
-  "provenance": "Installed Codex bundled snapshot; upstream revision not supplied by the installed marker. Existing uncommitted updates preserved.",
+  "provenance": "Reviewed installed Codex bundled snapshot and local Playwright package; exact upstream revision remains unavailable. Local maintenance overrides are recorded separately below.",
   "files": {
     "skills/.system/.codex-system-skills.marker": "4b857d61192f2fa2df02f1200356167abf381eb1080de74972acd52a365eefca",
     "skills/.system/imagegen/LICENSE.txt": "4dd13869245e356246a5b770723247bbb80a8f07a181d1d3d873a1734297cdb9",
@@ -11,7 +11,7 @@
     "skills/.system/imagegen/assets/imagegen.png": "95952f644064eb9e890f98d8db07216347186526e4c41ad66d3420629eb86e20",
     "skills/.system/imagegen/references/cli.md": "ecfc2e09261a0feb3482517a5fa0ff410cb7d1958e3cbd2ac6b61586f5b81405",
     "skills/.system/imagegen/references/codex-network.md": "c88298ca4481f6116a16fa7987434fc977f8b311c1bbc0c3d862ffd0c5981148",
-    "skills/.system/imagegen/references/image-api.md": "dc975d7af8a4888967251a0276014b4a71ea30455294944b762256373ce3e569",
+    "skills/.system/imagegen/references/image-api.md": "e56227a742950c384eff5bf9fb8784b228c1f1adca0937c566f16404958ffc6a",
     "skills/.system/imagegen/references/prompting.md": "b210b051c775860267080941eba968212bf0ac7fce581d75c5dcc217d8293f8b",
     "skills/.system/imagegen/references/sample-prompts.md": "70474177d151855b175c6133de2aae1d90b7f146b0dab50ec830972c47d72183",
     "skills/.system/imagegen/scripts/image_gen.py": "b4345cf835e5b593b97df6bb2b70bda493b8a97eee4cabbc99b2fa57dba9b448",
@@ -30,7 +30,7 @@
     "skills/.system/openai-docs/references/prompting-guide.md": "548d4ca73a34cd4b0041ef05a899592e8c50772b8f3a76c579ec941e403e19f6",
     "skills/.system/openai-docs/references/upgrade-guide.md": "ecac89155f910f064fd306e89c74585cabdb2142aba4f2acc0cead092ae1d1a5",
     "skills/.system/openai-docs/references/upgrading-to-gpt-6-astra.md": "62ef6d22684662a019d203834fe1205a07e4ca4c65dddcbabe1bb51efe1aa840",
-    "skills/.system/openai-docs/scripts/fetch-codex-manual.mjs": "f53eb6d2f286e9efcc397e8bee93a938e37296c90953e4e06e94899ef1b6c363",
+    "skills/.system/openai-docs/scripts/fetch-codex-manual.mjs": "1564c277b1607f960ffc7ce7d40ff448646664015c817f61f0e249dd8d94cf66",
     "skills/.system/openai-docs/scripts/resolve-latest-model-info": "7354dbb030ca0736dd633a7ca1b930cf640abd40370725dea3a458cb51d49523",
     "skills/.system/openai-docs/scripts/resolve-latest-model-info.cjs": "eeb1bb486018e16b37edfc06b1a37179dbc672982d501040d4f7142f29dd2e64",
     "skills/.system/review-agent/SKILL.md": "07079efd0dc76f05fade424e5dfb048dce1de2df7626e1a4f56292a4f3f92228",
@@ -43,7 +43,7 @@
     "skills/.system/skill-creator/references/openai_yaml.md": "ffac39318e408108141d40f820968e59f70434a891694f9bf1d25be8237b150c",
     "skills/.system/skill-creator/scripts/generate_openai_yaml.py": "816df12072d74faf924d802a6599a139997e1441e90bfe4869ec304f2e5e2851",
     "skills/.system/skill-creator/scripts/init_skill.py": "bf0656a5f9d8d8cdecf0245eaf27e1df8e0e9b6d40ccdda814eb8e3d5f6992c8",
-    "skills/.system/skill-creator/scripts/quick_validate.py": "ee6dba90f44d37171c5a6edb8095979c54919ff6822c1a907afca2e78c48738c",
+    "skills/.system/skill-creator/scripts/quick_validate.py": "262c5baae65f6bbcca8ab1560ed5ea6e152780bd0470209b594497a38ee2f9fe",
     "skills/.system/skill-installer/LICENSE.txt": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
     "skills/.system/skill-installer/SKILL.md": "d68b77e5bbb34dedab89d134da52855f140fc4b4299b80104f534e3b9e98f8ee",
     "skills/.system/skill-installer/agents/openai.yaml": "5ce223d8b1070b82c42298538f1b8d376f788eb9e7a42a987e8c094070d73f0e",
@@ -51,6 +51,53 @@
     "skills/.system/skill-installer/assets/skill-installer.png": "d0a230b1a79b71b858b7c215a0fbb0768d6459c14ea4ef80c61592629bf0e605",
     "skills/.system/skill-installer/scripts/github_utils.py": "61c1bbe2ae217433b4b6f9f09f21aca4df52c12598068343ade719f706e4859b",
     "skills/.system/skill-installer/scripts/install-skill-from-github.py": "38f311b75664bb063808f982c600271ebc4b560830f491705190f88a94e3e781",
-    "skills/.system/skill-installer/scripts/list-skills.py": "9d6dfb2abf3afeee7f027a89fb1626b918a973da18f4eb6c25681286301beb41"
-  }
+    "skills/.system/skill-installer/scripts/list-skills.py": "9d6dfb2abf3afeee7f027a89fb1626b918a973da18f4eb6c25681286301beb41",
+    "skills/playwright/LICENSE.txt": "c16f8dcf1a368b83be78d826ea23de4079fe1b4469a0ab9ee20563f37ff3d44b",
+    "skills/playwright/NOTICE.txt": "417d5d3372914ecfd9fe102ac1d7dc2119253209f9718d6c222f616876c1904b",
+    "skills/playwright/SKILL.md": "4c2cc386d42734cee5a3117532c7d86c0ccae993713296b391c7886a629832e3",
+    "skills/playwright/agents/openai.yaml": "ddda43720fc566fffa45264be8f17f7745a3cee28d5245d41d3b963bc9967230",
+    "skills/playwright/assets/playwright-small.svg": "f1d213c0f76735d8272c3d3e9fbf71fe7b894e2d1588907044c780f2c33a9732",
+    "skills/playwright/assets/playwright.png": "521669f088c838196c6c852ccc9abdd7234d8f37fc9a8a7a9af7db2d50193381",
+    "skills/playwright/references/cli.md": "7c069a8206ba20b9ddbdc42436b04de30bb3aa4a825ba98680757ee62e954900",
+    "skills/playwright/references/workflows.md": "d45e2d0d1220a9fd7d369152b2e0070739e91c44009355bb17d6355fa5e5c0a8",
+    "skills/playwright/scripts/playwright_cli.sh": "3264c13dc1b3f62be99edf5170c340dd3d4abf218960763b281b0e9f6aa9e3c3"
+  },
+  "bundles": [
+    "imagegen",
+    "openai-docs",
+    "review-agent",
+    "skill-creator",
+    "skill-installer",
+    "playwright"
+  ],
+  "local_overrides": [
+    {
+      "path": "skills/.system/skill-creator/scripts/quick_validate.py",
+      "change": "Respect fence/container indentation when checking unfinished placeholders."
+    },
+    {
+      "path": "skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+      "change": "Resolve installed symlink entrypoint and retain request timeout through body download."
+    },
+    {
+      "path": "skills/.system/imagegen/references/image-api.md",
+      "change": "Require explicit model-switch consent consistently with the entrypoint."
+    },
+    {
+      "path": "skills/playwright/scripts/playwright_cli.sh",
+      "change": "Pin @playwright/cli@0.1.19 and respect both long and short explicit session flags."
+    },
+    {
+      "path": "skills/playwright/SKILL.md",
+      "change": "Document pinned CLI usage and upgrade smoke verification."
+    },
+    {
+      "path": "skills/playwright/references/workflows.md",
+      "change": "Document the pinned CLI project/global configuration paths."
+    },
+    {
+      "path": "skills/playwright/LICENSE.txt",
+      "change": "Normalize CRLF to LF; preserve every license-text line."
+    }
+  ]
 }

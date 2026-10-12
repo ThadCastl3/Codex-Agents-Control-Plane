@@ -1,0 +1,95 @@
+{
+  "reviewed_at": "2026-10-12T21:10:04.679414+00:00",
+  "status": "reviewed_with_one_open_finding",
+  "bundles": [
+    "imagegen",
+    "openai-docs",
+    "review-agent",
+    "skill-creator",
+    "skill-installer",
+    "playwright"
+  ],
+  "provenance": {
+    "cli_version": "0.159.2",
+    "exact_upstream_revision": "unavailable",
+    "snapshot_files": 58,
+    "source_manifest": "config/vendor-manifest.json",
+    "local_overrides_documented": true
+  },
+  "fixed_findings": [
+    {
+      "path": "skills/.system/skill-creator/scripts/quick_validate.py",
+      "problem": "Four-space literal fences hide unfinished guidance or prematurely close code examples.",
+      "result": "Fence indentation and direct list container indentation respected; regressions cover literal and dedented cases."
+    },
+    {
+      "path": "skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+      "problem": "Installed symlink entrypoint silently skipped CLI main.",
+      "result": "Real paths compared; symlink invocation reports invalid arguments correctly."
+    },
+    {
+      "path": "skills/.system/openai-docs/scripts/fetch-codex-manual.mjs",
+      "problem": "Fetch timeout ended at headers rather than body completion.",
+      "result": "Body download remains inside timeout; stalled-body regression leaves no cached manual."
+    },
+    {
+      "path": "skills/.system/imagegen/references/image-api.md",
+      "problem": "CLI opt-in incorrectly implied consent to switch image models.",
+      "result": "Explicit model-switch consent aligned with SKILL.md."
+    },
+    {
+      "path": "skills/playwright/references/workflows.md",
+      "problem": "Default configuration path did not match pinned CLI implementation.",
+      "result": "Project .playwright/cli.config.json and global ~/.playwright/cli.config.json documented."
+    }
+  ],
+  "installer_review": "Containment, internal file-link materialization, external/unsupported link and file rejection, ZIP traversal, and existing destination preservation passed offline fixtures.",
+  "playwright_review": {
+    "version_pin": "@playwright/cli@0.1.19",
+    "node_requirement": ">=18",
+    "wrapper_help_smoke": "passed using normal npm cache/registry resolution",
+    "argument_cases": 7,
+    "explicit_session_flags": [
+      "--session",
+      "--session=",
+      "-s",
+      "-s="
+    ],
+    "browser_session_opened": false
+  },
+  "verification": {
+    "command": "bin/verify.sh",
+    "tests_passed": 73,
+    "seconds": 58.165,
+    "doctor": {
+      "PASS": 121,
+      "WARN": 2
+    },
+    "additional_disposable_creator_installer_tests": 32,
+    "docs_fixture_checks": 3,
+    "syntax": "Python, Bash, and Node checks passed",
+    "secret_scan": "No high-confidence findings; one low-confidence source assignment in GitHub helper is a variable expression.",
+    "native_catalog": "Local Codex app-server reports zero discovery errors; Playwright is discovered exactly once; all five existing hooks remain enabled and trusted."
+  },
+  "dependency_notes": [
+    "Skill-creator helpers require PyYAML. Default Python lacks it; validation used existing cached PyYAML 6.0.2 via scoped PYTHONPATH without installing packages. Node checks are skipped when Node is unavailable, and creator checks explicitly skip when PyYAML is absent."
+  ],
+  "open_findings": [
+    {
+      "priority": 2,
+      "path": "skills/.system/imagegen/scripts/image_gen.py",
+      "problem": "Generate/edit/batch check primary and derived output collisions after API execution; a rerun can incur API work before failing and a derived collision can leave a new primary file.",
+      "status": "documented; API-backed code left unchanged",
+      "reason": "Source maintenance of API-backed code requires an explicit credential decision under the installed credential workflow, even for offline changes. This request covers bundle review and commit, without API setup.",
+      "constraint_source": "/Users/axios/.codex/plugins/cache/openai-curated-remote/openai-developers/1.3.6/skills/openai-platform-api-key/SKILL.md"
+    }
+  ],
+  "scope_guards": {
+    "memory_index_unchanged": true,
+    "memory_index_excluded_from_commit": true,
+    "private_memory_excluded": true,
+    "hook_definitions_and_trust_unchanged": true
+  },
+  "official_reference": "https://learn.chatgpt.com/docs/build-skills",
+  "license_line_endings": "Playwright license normalized from CRLF to LF; every text line preserved. Staged whitespace verification passes."
+}

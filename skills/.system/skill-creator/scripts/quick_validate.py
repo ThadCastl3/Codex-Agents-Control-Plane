@@ -79,6 +79,8 @@ def validate_skill(skill_path):
     if not isinstance(description, str):
         return False, f"Description must be a string, got {type(description).__name__}"
     description = description.strip()
+    if description.startswith("[TODO:"):
+        return False, "Description contains an unfinished TODO placeholder"
     if description:
         if "<" in description or ">" in description:
             return False, "Description cannot contain angle brackets (< or >)"
@@ -87,6 +89,48 @@ def validate_skill(skill_path):
                 False,
                 f"Description is too long ({len(description)} characters). Maximum is 1024 characters.",
             )
+
+    body = content[match.end() :]
+    fence_marker = None
+    fence_length = 0
+    fence_container_indent = 0
+    for line in body.splitlines():
+        expanded_line = line.expandtabs(4)
+        if fence_marker is not None:
+            indent = len(expanded_line) - len(expanded_line.lstrip(" "))
+            if expanded_line.strip() and indent < fence_container_indent:
+                # Dedenting ends a list container, including an unclosed fence.
+                fence_marker = None
+                fence_length = 0
+                fence_container_indent = 0
+            else:
+                closing_fence = re.match(
+                    rf"^[ ]{{{fence_container_indent},{fence_container_indent + 3}}}"
+                    rf"({re.escape(fence_marker)}{{{fence_length},}})[ \t]*$",
+                    expanded_line,
+                )
+                if closing_fence:
+                    fence_marker = None
+                    fence_length = 0
+                    fence_container_indent = 0
+                continue
+
+        fence = re.match(
+            r"^(?:(?P<container>[ ]{0,3}(?:[-+*]|\d{1,9}[.)])[ ]{1,4})|[ ]{0,3})"
+            r"(?P<marker>`{3,}|~{3,})(.*)$",
+            expanded_line,
+        )
+        if fence:
+            marker = fence.group("marker")
+            fence_marker = marker[0]
+            fence_length = len(marker)
+            fence_container_indent = len(fence.group("container") or "")
+            continue
+
+        if fence_marker is None and re.fullmatch(
+            r"[ ]{0,3}\[TODO:[^\n]*\][ \t]*", line
+        ):
+            return False, "Skill instructions contain an unfinished TODO placeholder"
 
     return True, "Skill is valid!"
 
