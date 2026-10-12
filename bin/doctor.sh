@@ -10,7 +10,7 @@ DEFAULT_MEMORY_ROOT="$DEFAULT_REPO_ROOT/memory"
 usage() {
   cat <<'EOF'
 Usage:
-  doctor.sh [--repo-root "<path>"] [--memory-root "<path>"]
+  doctor.sh [--repo-root "<path>"] [--memory-root "<path>"] [--codex-home "<path>"] [--agents-home "<path>"]
 
 Checks:
   - Required repository files and directories
@@ -63,6 +63,8 @@ resolve_link_target_abs() {
 
 REPO_ROOT="$DEFAULT_REPO_ROOT"
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
+CONTROL_PLANE_CODEX_DIR="${CODEX_HOME:-$HOME/.codex}"
+CONTROL_PLANE_AGENTS_DIR="$HOME/.agents"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +76,16 @@ while [[ $# -gt 0 ]]; do
     --memory-root)
       [[ $# -ge 2 ]] || die_usage "missing value for --memory-root"
       MEMORY_ROOT="$2"
+      shift 2
+      ;;
+    --codex-home)
+      [[ $# -ge 2 ]] || die_usage "missing value for --codex-home"
+      CONTROL_PLANE_CODEX_DIR="$2"
+      shift 2
+      ;;
+    --agents-home)
+      [[ $# -ge 2 ]] || die_usage "missing value for --agents-home"
+      CONTROL_PLANE_AGENTS_DIR="$2"
       shift 2
       ;;
     -h|--help)
@@ -193,8 +205,8 @@ check_file "memory.readme" "$MEMORY_ROOT/README.md" "cat > \"$MEMORY_ROOT/README
 
 EXPECTED_AGENTS="$(abs_path "$REPO_ROOT/AGENTS.md")"
 EXPECTED_SKILLS="$(abs_path "$REPO_ROOT/skills")"
-CODEx_AGENTS_LINK="$HOME/.codex/AGENTS.md"
-CODEx_SKILLS_LINK="$HOME/.codex/skills"
+CODEx_AGENTS_LINK="$CONTROL_PLANE_CODEX_DIR/AGENTS.md"
+CODEx_SKILLS_LINK="$CONTROL_PLANE_CODEX_DIR/skills"
 
 if [[ -L "$CODEx_AGENTS_LINK" ]]; then
   actual="$(resolve_link_target_abs "$CODEx_AGENTS_LINK")"
@@ -238,6 +250,8 @@ done
 
 syntax_targets=(
   "lib/secret_scan.sh"
+  "lib/memory_transaction.sh"
+  "bin/verify.sh"
   "skills/secret-scan/scripts/scan.sh"
   "skills/context-bootstrap/scripts/bootstrap.sh"
   "skills/memory-retrieve/scripts/retrieve.sh"
@@ -288,6 +302,29 @@ if [[ -f "$index_file" ]]; then
   else
     mark_pass "index.no-logs-links" "no log-target markdown links in index.md"
   fi
+fi
+
+if command -v python3 >/dev/null 2>&1 && [[ -f "$REPO_ROOT/lib/validate_setup.py" ]]; then
+  set +e
+  setup_json="$(python3 "$REPO_ROOT/lib/validate_setup.py" --repo-root "$REPO_ROOT" --memory-root "$MEMORY_ROOT" --codex-home "$CONTROL_PLANE_CODEX_DIR" --agents-home "$CONTROL_PLANE_AGENTS_DIR" 2>/dev/null)"
+  setup_rc=$?
+  set -e
+  if [[ "$setup_rc" -ne 0 ]]; then
+    HAS_FAILURE=1
+  fi
+  if [[ -n "$setup_json" ]]; then
+    while IFS='|' read -r status check_id message; do
+      [[ -n "$status" ]] || continue
+      add_check "$status" "$check_id" "$message"
+      if [[ "$status" == "FAIL" ]]; then
+        FAILURES+=("[$check_id] $message")
+      fi
+    done < <(printf '%s' "$setup_json" | python3 -c 'import json,sys; d=json.load(sys.stdin); [print("|".join([c["status"],c["id"],c["message"].replace("|","/").replace("\n"," ")])) for c in d["checks"]]')
+  else
+    mark_fail "setup.validation" "setup validation was unavailable" "python3 --version"
+  fi
+else
+  mark_fail "runtime.python" "Python 3.11+ and setup validation helper are required" "python3 --version"
 fi
 
 result="pass"

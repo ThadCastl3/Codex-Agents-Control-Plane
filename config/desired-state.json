@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "authored_paths": ["AGENTS.md", "skills", "config", "hooks", "lib", "bin", "tests"],
+  "runtime_config_ownership": "curated values only; preserve app-managed and machine-specific fields",
+  "required_features": {"hooks": true},
+  "deprecated_feature_keys": ["js_repl"],
+  "native_memories": "optional generated recall; structured repository memory remains authoritative",
+  "hooks": "local context injection and direct memory edit guard; trust reviewed separately",
+  "private_state": ".private",
+  "vendor_manifest": "config/vendor-manifest.json"
+}

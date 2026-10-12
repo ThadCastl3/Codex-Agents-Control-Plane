@@ -1,0 +1,60 @@
+{
+  "verified_at": "2026-10-12T16:04:14.850539-04:00",
+  "source": "Local Codex app-server hooks/list plus this chat and disposable adapter tests",
+  "hooks": [
+    {
+      "event": "preToolUse",
+      "enabled": true,
+      "trust_status": "trusted",
+      "source_path": "/Users/axios/.codex/hooks.json"
+    },
+    {
+      "event": "sessionStart",
+      "enabled": true,
+      "trust_status": "trusted",
+      "source_path": "/Users/axios/.codex/hooks.json"
+    },
+    {
+      "event": "userPromptSubmit",
+      "enabled": true,
+      "trust_status": "trusted",
+      "source_path": "/Users/axios/.codex/hooks.json"
+    },
+    {
+      "event": "subagentStart",
+      "enabled": true,
+      "trust_status": "trusted",
+      "source_path": "/Users/axios/.codex/hooks.json"
+    },
+    {
+      "event": "stop",
+      "enabled": true,
+      "trust_status": "trusted",
+      "source_path": "/Users/axios/.codex/hooks.json"
+    }
+  ],
+  "loading_errors": 0,
+  "loading_warnings": 0,
+  "live_evidence": {
+    "SessionStart": "Source-of-truth context injected at startup and compaction restoration in this chat.",
+    "UserPromptSubmit": "Task-specific bootstrap context injected for this user request.",
+    "SubagentStart": "Fresh child independently confirmed injected ownership and effective-constraint instructions.",
+    "PreToolUse": "Attempt to update a nonexistent structured-memory document was blocked by the named hook before tool execution; no document created."
+  },
+  "fixture_evidence": {
+    "suite": "tests/test_setup_hooks_snapshots.py",
+    "passed": 13,
+    "seconds": 3.044,
+    "Stop": "Failed receipt requests continuation; reentrant call and passed receipt return an empty object; malformed receipt gives advisory warning."
+  },
+  "doctor": {
+    "exit_code": 0,
+    "passed": 121,
+    "warnings": 2,
+    "notes": "Static hook-trust warning is resolved by the live API check; vendor upstream revision remains unknown."
+  },
+  "limitations": [
+    "Stop behavior was tested with disposable receipts; no failed receipt was injected into this live turn.",
+    "Stop requests continuation only when verification is explicitly recorded as failed for that session and turn."
+  ]
+}

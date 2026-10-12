@@ -1,0 +1,5 @@
+interface:
+  display_name: "Secret Scan"
+  short_description: "Scan and redact text under the memory policy"
+policy:
+  allow_implicit_invocation: false

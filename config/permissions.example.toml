@@ -1,0 +1,14 @@
+# Optional beta profile migration; this file is not automatically installed.
+# Remove legacy sandbox_mode/sandbox_workspace_write settings before selecting
+# these profiles, and verify enforcement on each client.
+default_permissions = ":read-only"
+
+[permissions.control-plane-edit]
+description = "Edit the authored control plane without command network access."
+extends = ":workspace"
+
+[permissions.control-plane-edit.workspace_roots]
+"~/.config/codex-agents" = true
+
+[permissions.control-plane-edit.network]
+enabled = false

@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Buffer and sanitize complete output; scan sources before selecting excerpts.
+SECRET_READER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_READER_REPO_ROOT="$(cd "$SECRET_READER_SCRIPT_DIR/../../.." && pwd)"
+source "$SECRET_READER_REPO_ROOT/lib/secret_scan.sh"
+
+secret_scan_reader_main() {
+
 export LC_ALL=C
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
@@ -97,14 +104,7 @@ confidence_rank() {
 }
 
 redact_inline() {
-  sed -E \
-    -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-    -e 's/(AKIA[0-9A-Z]{16})/[REDACTED]/g' \
-    -e 's/(gh[pousr]_[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/(sk-[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/\beyJ[A-Za-z0-9._-]{10,}\b/[REDACTED]/g' \
-    -e 's/\b[A-Fa-f0-9]{32,}\b/[REDACTED]/g' \
-    -e 's/([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=[REDACTED]/g'
+  secret_scan_filter_read
 }
 
 count_text_hits() {
@@ -143,7 +143,7 @@ extract_section() {
       next
     }
     in_sec { print }
-  ' "$file"
+  ' < <(secret_scan_filter_file_read "$file")
 }
 
 count_section_hits() {
@@ -204,7 +204,7 @@ extract_constraints() {
       line=clean($0)
       if (line!="") print sec "\t" line
     }
-  ' "$file" > "$tmp"
+  ' < <(secret_scan_filter_file_read "$file") > "$tmp"
 
   op_re='must|should|avoid|require|only|never|cannot|can not|do not|idempotent|immutable'
   order=0
@@ -333,7 +333,19 @@ sorted_file="$(mktemp)"
 selected_file="$(mktemp)"
 all_constraints_file="$(mktemp)"
 constraints_final_file="$(mktemp)"
-trap 'rm -f "$matches_file" "$candidates_file" "$sorted_file" "$selected_file" "$all_constraints_file" "$constraints_final_file"' EXIT
+decision_state_file="$(mktemp)"
+trap 'rm -f "$matches_file" "$candidates_file" "$sorted_file" "$selected_file" "$all_constraints_file" "$constraints_final_file" "$decision_state_file"' EXIT
+
+decision_state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/lib/decision_state.py"
+if ! python3 "$decision_state_script" "$MEMORY_ROOT" > "$decision_state_file"; then
+  echo "Decision context unavailable: effective decision state could not be resolved."
+  exit 2
+fi
+if grep -q '^DIAGNOSTIC' "$decision_state_file"; then
+  echo "Decision context unavailable: supersession graph requires review."
+  awk -F'\t' '$1=="DIAGNOSTIC" {print "- " $2}' "$decision_state_file"
+  exit 3
+fi
 
 # File-name prefilter.
 while IFS= read -r -d '' f; do
@@ -375,31 +387,38 @@ if [[ ! -s "$matches_file" ]]; then
   exit 0
 fi
 
-sort -u "$matches_file" > "$sorted_file"
+python3 "$decision_state_script" "$MEMORY_ROOT" --state "$decision_state_file" \
+  --expand-candidates "$matches_file" > "$sorted_file"
 
-while IFS= read -r file || [[ -n "$file" ]]; do
+while IFS=$'\t' read -r file relevance_file || [[ -n "$file" ]]; do
   [[ -f "$file" ]] || continue
 
   rel_path="${file#"$MEMORY_ROOT"/}"
-  title="$(grep -m1 -E '^#[[:space:]]+' "$file" | sed -E 's/^#[[:space:]]*//' || true)"
+  title="$(secret_scan_filter_file_read "$file" | grep -m1 -E '^#[[:space:]]+' | sed -E 's/^#[[:space:]]*//' || true)"
   [[ -n "$title" ]] || title="$(basename "$file" .md)"
-  date_str="$(grep -m1 -E '^Date:[[:space:]]*' "$file" | sed -E 's/^Date:[[:space:]]*//' || true)"
+  date_str="$(secret_scan_filter_file_read "$file" | grep -m1 -E '^Date:[[:space:]]*' | sed -E 's/^Date:[[:space:]]*//' || true)"
   if ! valid_date "$date_str"; then
     date_str="$(date -r "$(file_epoch "$file")" "+%Y-%m-%d" 2>/dev/null || echo "1970-01-01")"
   fi
-  status="$(grep -m1 -E '^Status:[[:space:]]*' "$file" | sed -E 's/^Status:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' || true)"
-  [[ -n "$status" ]] || status="accepted"
-  supersedes="$(grep -m1 -E '^Supersedes:[[:space:]]*' "$file" | sed -E 's/^Supersedes:[[:space:]]*//' || true)"
+  status="$(secret_scan_filter_file_read "$file" | grep -m1 -E '^Status:[[:space:]]*' | sed -E 's/^Status:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' || true)"
+  status="$(awk -F'\t' -v p="$rel_path" '$1=="DECISION" && $2==p {print $3}' "$decision_state_file")"
+  supersedes="$(secret_scan_filter_file_read "$file" | grep -m1 -E '^Supersedes:[[:space:]]*' | sed -E 's/^Supersedes:[[:space:]]*//' || true)"
   supersedes_safe="$supersedes"
   [[ -n "$supersedes_safe" ]] || supersedes_safe="__NONE__"
   date_epoch="$(file_epoch "$file")"
 
-  filename_hits="$(count_text_hits "$(basename "$file")")"
-  title_hits="$(count_text_hits "$title")"
-  decision_hits="$(count_section_hits "$file" "Decision")"
-  context_hits="$(count_section_hits "$file" "Context")"
-  why_hits="$(count_section_hits "$file" "Why")"
-  body_hits="$(count_body_hits "$file")"
+  # A query for an old policy follows its accepted replacement even when the
+  # replacement uses new terminology. Relevance is inherited, constraints are not.
+  relevance_title="$title"
+  if [[ "$relevance_file" != "$file" ]]; then
+    relevance_title="$(secret_scan_filter_file_read "$relevance_file" | grep -m1 -E '^#[[:space:]]+' | sed -E 's/^#[[:space:]]*//' || true)"
+  fi
+  filename_hits="$(count_text_hits "$(basename "$relevance_file")")"
+  title_hits="$(count_text_hits "$relevance_title")"
+  decision_hits="$(count_section_hits "$relevance_file" "Decision")"
+  context_hits="$(count_section_hits "$relevance_file" "Context")"
+  why_hits="$(count_section_hits "$relevance_file" "Why")"
+  body_hits="$(count_body_hits "$relevance_file")"
 
   # Highest weight to filename/title, then core sections, then body.
   score=$(( (filename_hits + title_hits) * 30 + decision_hits * 20 + (context_hits + why_hits) * 10 + body_hits * 2 ))
@@ -452,10 +471,16 @@ if [[ ! -s "$candidates_file" ]]; then
 fi
 
 # Ranking priority: status > newer date > query-hit score; since is tie preference.
-sort -t $'\t' -k1,1nr -k2,2nr -k3,3nr -k4,4nr -k5,5 "$candidates_file" > "$sorted_file"
+sort -t $'\t' -k1,1nr -k2,2nr -k3,3nr -k4,4nr -k5,5 "$candidates_file" \
+  | awk -F'\t' '!seen[$5]++' > "$sorted_file"
 head -n "$max_items" "$sorted_file" > "$selected_file"
 
-echo "Existing decision(s) apply:"
+accepted_count="$(awk -F'\t' '$8=="accepted" {n++} END {print n+0}' "$selected_file")"
+if [[ "$accepted_count" -gt 0 ]]; then
+  echo "Existing decision(s) apply:"
+else
+  echo "Related decision records (advisory):"
+fi
 echo
 
 idx=0
@@ -469,13 +494,19 @@ while IFS=$'\t' read -r _sw _de _sc _sm rel_path title date_str status supersede
   echo "- Date: ${date_str}"
   echo "- Status: ${status}"
 
-  echo "- Constraints:"
+  if [[ "$status" == "accepted" ]]; then
+    echo "- Constraints:"
+  else
+    echo "- Advisory notes (not binding):"
+  fi
   constraints_count=0
   while IFS= read -r c || [[ -n "$c" ]]; do
     [[ -z "$c" ]] && continue
     constraints_count=$((constraints_count + 1))
     echo "  - ${c}"
-    printf '%s\n' "$c" >> "$all_constraints_file"
+    if [[ "$status" == "accepted" ]]; then
+      printf '%s\n' "$c" >> "$all_constraints_file"
+    fi
   done < <(extract_constraints "$file")
   if [[ "$constraints_count" -eq 0 ]]; then
     echo "  - (No explicit constraints extracted; review sections: Decision/Consequences/Tradeoffs.)"
@@ -483,10 +514,6 @@ while IFS=$'\t' read -r _sw _de _sc _sm rel_path title date_str status supersede
 
   if [[ -n "$supersedes" ]]; then
     echo "- Supersedes: ${supersedes}"
-  fi
-  superseded_by="$(awk -F'\t' -v p="$rel_path" '$9==p {print $5}' "$selected_file" | paste -sd ', ' - || true)"
-  if [[ -n "$superseded_by" ]]; then
-    echo "- Superseded-by: ${superseded_by}"
   fi
   echo
 done < "$selected_file"
@@ -500,13 +527,21 @@ if [[ -s "$all_constraints_file" ]]; then
     echo "CONSTRAINT: ${c}"
   done < "$constraints_final_file"
 else
-  echo "- (No extracted constraints; inspect matched decisions directly.)"
+  if [[ "$accepted_count" -eq 0 ]]; then
+    echo "- No accepted decision constraints apply; related records are advisory."
+  else
+    echo "- (Accepted decisions matched but no explicit constraints were extracted; inspect matched decisions directly.)"
+  fi
 fi
 
 statuses_distinct="$(awk -F'\t' '{print $8}' "$selected_file" | sort -u | tr '\n' ' ' | sed -E 's/[[:space:]]+$//' )"
 status_count="$(awk -F'\t' '{print $8}' "$selected_file" | sort -u | wc -l | tr -d ' ')"
 if [[ "$status_count" -gt 1 ]]; then
   echo
-  echo "Conflict note:"
-  echo "- Mixed decision statuses detected (${statuses_distinct}). Prefer newer accepted decisions."
+  echo "Advisory note:"
+  echo "- Related record statuses: ${statuses_distinct}. Only active accepted decisions supply binding constraints."
 fi
+
+}
+
+secret_scan_run_read_main secret_scan_reader_main "$@"

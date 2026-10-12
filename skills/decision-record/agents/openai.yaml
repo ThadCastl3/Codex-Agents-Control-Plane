@@ -1,0 +1,5 @@
+interface:
+  display_name: "Decision Record"
+  short_description: "Record an immutable durable decision"
+policy:
+  allow_implicit_invocation: false

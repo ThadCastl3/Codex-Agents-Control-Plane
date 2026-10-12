@@ -1,0 +1,5 @@
+interface:
+  display_name: "Memory Write"
+  short_description: "Write scanned durable knowledge and notes"
+policy:
+  allow_implicit_invocation: false

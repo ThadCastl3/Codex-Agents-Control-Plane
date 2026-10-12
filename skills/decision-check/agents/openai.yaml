@@ -1,0 +1,5 @@
+interface:
+  display_name: "Decision Check"
+  short_description: "Resolve effective decisions and binding constraints"
+policy:
+  allow_implicit_invocation: false

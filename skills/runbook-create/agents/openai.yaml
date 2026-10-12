@@ -1,0 +1,5 @@
+interface:
+  display_name: "Runbook Create"
+  short_description: "Capture a verified reusable procedure"
+policy:
+  allow_implicit_invocation: false

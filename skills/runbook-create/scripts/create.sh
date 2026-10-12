@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -279,6 +281,7 @@ sanitize_into tags "tags" "$tags"
 tags="$(normalize_tags "$tags")"
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
 PATTERNS_DIR="$MEMORY_ROOT/patterns"
 mkdir -p "$PATTERNS_DIR"
 
@@ -347,7 +350,7 @@ done
     printf "\n## Notes\n"
     printf "%s\n" "$notes"
   fi
-} > "$path"
+} | memory_create_file "$path"
 
 description="$(first_nonempty_line "$when_to_use")"
 if [[ -z "$description" ]]; then

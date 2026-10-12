@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Buffer and sanitize complete output; scan sources before selecting excerpts.
+SECRET_READER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_READER_REPO_ROOT="$(cd "$SECRET_READER_SCRIPT_DIR/../../.." && pwd)"
+source "$SECRET_READER_REPO_ROOT/lib/secret_scan.sh"
+
+secret_scan_reader_main() {
+
 export LC_ALL=C
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -196,22 +203,9 @@ extract_constraints() {
     add_dedup_normalized "$out_file" "$seen_file" "$marker"
   done <<< "$input"
 
-  if [[ -s "$out_file" ]]; then
-    return 0
-  fi
-
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    line="$(trim "$line")"
-    [[ "$line" =~ ^-[[:space:]]+ ]] || continue
-    line="${line#- }"
-    add_dedup_normalized "$out_file" "$seen_file" "$line"
-  done < <(printf '%s\n' "$input" | awk '
-    /^Constraints to obey:/ { in_sec=1; next }
-    in_sec {
-      if ($0 ~ /^$/) exit
-      print
-    }
-  ')
+  # Only machine-consumer markers certify binding constraints. Human-readable
+  # advisory notes and empty-result placeholders must never become constraints.
+  return 0
 }
 
 extract_status_line() {
@@ -459,12 +453,22 @@ patterns_tmp="$(mktemp)"
 failure_notes_tmp="$(mktemp)"
 trap 'rm -f "$constraints_tmp" "$constraints_seen_tmp" "$next_actions_tmp" "$evidence_tmp" "$patterns_tmp" "$failure_notes_tmp"' EXIT
 
+# Read the curated index before source retrieval without dumping it into context.
+if [[ -f "$DEFAULT_MEMORY_ROOT/index.md" ]]; then
+  if ! index_context="$(secret_scan_filter_file_read "$DEFAULT_MEMORY_ROOT/index.md" 2>/dev/null)"; then
+    record_failure "memory-index" 2
+  fi
+else
+  record_failure "memory-index" 2
+fi
+
 decision_cmd=("$DECISION_SCRIPT" "$query" "--max-items" "$max_items" "--min-confidence" "$min_confidence")
 if [[ -n "$since" ]]; then
   decision_cmd+=("--since" "$since")
 fi
 run_source_skill "decision-check" "${decision_cmd[@]}"
 decision_out="$RUN_OUT"
+decision_exit_code="$RUN_EXIT_CODE"
 
 project_out=""
 if [[ -n "$project" ]]; then
@@ -505,13 +509,21 @@ fi
 echo "## Context"
 echo
 echo "### Applicable constraints"
-if [[ -s "$constraints_tmp" ]]; then
+if [[ "$decision_exit_code" -ne 0 || -z "$decision_out" ]]; then
+  echo "- Decision context unavailable; constraints were not verified."
+elif [[ -s "$constraints_tmp" ]]; then
   while IFS= read -r c || [[ -n "$c" ]]; do
     [[ -n "$c" ]] || continue
     echo "- $c"
   done < "$constraints_tmp"
 else
-  echo "- No relevant decision found."
+  if printf '%s\n' "$decision_out" | grep -Fxq 'No relevant decision found.'; then
+    echo "- No relevant decision found."
+  elif printf '%s\n' "$decision_out" | grep -Fq 'Related decision records (advisory):'; then
+    echo "- No accepted decision constraints apply; related records are advisory."
+  else
+    echo "- Accepted decision records matched; no explicit constraints were extracted."
+  fi
 fi
 
 echo
@@ -564,3 +576,7 @@ fi
 if [[ ! -s "$evidence_tmp" && ! -s "$failure_notes_tmp" ]]; then
   echo "- (none)"
 fi
+
+}
+
+secret_scan_run_read_main secret_scan_reader_main "$@"

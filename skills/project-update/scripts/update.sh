@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -346,6 +348,7 @@ sanitize_into tags "tags" "$tags"
 tags="$(normalize_tags "$tags")"
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
 PROJECTS_DIR="$MEMORY_ROOT/projects"
 mkdir -p "$PROJECTS_DIR"
 
@@ -367,7 +370,7 @@ if [[ ! -f "$overview_file" ]]; then
     printf "Constraints:\n"
     printf "Approach:\n"
     printf "Key Links:\n"
-  } > "$overview_file"
+  } | memory_create_file "$overview_file"
   created_files+=("$rel_overview")
 
   index_script="$REPO_ROOT/skills/memory-index-update/scripts/update_index.sh"

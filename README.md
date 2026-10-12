@@ -1,340 +1,198 @@
-
 <p align="center">
   <img src="assets/codex-context-agents-logo.png" alt="Codex Context Agents logo" width="220" />
 </p>
 
 # Codex Context Agents
 
-`~/.config/codex-agents` is a files-first, git-backed state layer for Codex.
+A files-first control plane for Codex. Authored policy, skills, configuration,
+and structured memory live in `~/.config/codex-agents`.
 
-It centralizes:
-- agent operating policy
-- reusable skills
-- persistent memory
+Code and policy are versioned. Private memory entries are Git-ignored and have
+an explicit local snapshot/restore path. Codex-generated native memories remain
+an optional recall layer around the authoritative records here.
 
-The goal is deterministic behavior with safe rollback.
+## Runtime
 
-## Official Codex Docs
+Requires macOS or Linux, Bash 3.2+, and Python 3.11+. The core uses the Python
+standard library; `rg` is preferred, with a slower search fallback. The optional
+The separately maintained local Playwright workflow requires Node/npm. Its
+wrapper pins `@playwright/cli@0.1.19`; that bundled skill is outside the authored
+control-plane changes.
 
-- [Codex Overview](https://developers.openai.com/codex/)
-- [Codex CLI](https://developers.openai.com/codex/cli)
-- [Codex IDE Extension](https://developers.openai.com/codex/ide)
-- [Codex GitHub Integration](https://developers.openai.com/codex/github)
-- [AGENTS.md for Codex](https://developers.openai.com/codex/agents.md)
-- [Codex Skills](https://developers.openai.com/codex/skills)
-- [Codex Cloud Environments](https://developers.openai.com/codex/cloud/environments)
-
-## Why This Repo Exists
-
-Without a state layer, agents tend to:
-- repeat decisions
-- lose project continuity
-- produce inconsistent runbooks
-- drift from agreed constraints
-
-This repository fixes that by making durable state explicit, structured, and versioned.
-
-## Source of Truth and Symlink Model
-
-Authoritative state lives in this repo.
-
-Codex-facing paths should be symlinks:
-- `~/.codex/AGENTS.md` -> `~/.config/codex-agents/AGENTS.md`
-- `~/.codex/skills` -> `~/.config/codex-agents/skills`
-
-This keeps Codex integration stable while all real state stays git-managed.
-
-## Repository Layout
-
-```text
-~/.config/codex-agents/
-├── AGENTS.md
-├── README.md
-├── lib/
-│   └── secret_scan.sh
-├── memory/
-│   ├── README.md
-│   ├── index.md
-│   ├── logs/
-│   ├── decisions/
-│   ├── projects/
-│   ├── knowledge/
-│   └── patterns/
-├── skills/
-│   ├── decision-check/
-│   ├── context-bootstrap/
-│   ├── decision-record/
-│   ├── memory-index-update/
-│   ├── memory-retrieve/
-│   ├── memory-write/
-│   ├── project-status/
-│   ├── project-update/
-│   ├── workflow-plan/
-│   ├── runbook-create/
-│   ├── secret-scan/
-│   ├── security-best-practices/
-│   └── gh-address-comments/
-├── bin/
-│   ├── doctor.sh
-│   └── install.sh
-└── templates/
-```
-
-## Operating Model
-
-### 1) Read Before Recommend
-
-Before architecture/workflow recommendations:
-1. Read `memory/index.md`.
-2. Check relevant decisions and project context.
-3. Summarize constraints before proposing changes.
-
-### 2) Decision Enforcement
-
-Use `decision-check` before architecture/workflow changes.
-
-If relevant decisions exist, they are constraints, not suggestions.
-
-### 3) Append-Only Discipline
-
-- logs and project logs: append-only
-- decisions: immutable (new file when superseding)
-- index: additive, minimal diff, no aggressive reordering
-
-### 4) Automatic Index Hygiene
-
-Index discoverability is now default behavior at creation time:
-- `workflow-plan --to-pattern`: auto-registers the new pattern plan in `memory/index.md` (`## Patterns`)
-- `project-update`: when first scaffolding `overview.md`, auto-registers under `## Projects`
-- `memory-write`: when creating new `project`, `knowledge`, or `pattern` docs, auto-registers under the mapped section
-
-All of the above route index writes through:
-- `skills/memory-index-update/scripts/update_index.sh`
-
-If automatic index update cannot run, scripts print the exact fallback command to execute manually.
-
-### 5) Strict Secret Policy
-
-All write-side memory scripts enforce shared secret scanning.
-
-Default behavior:
-- high-confidence secrets: block write
-- low-confidence secret-like content: redact and continue
-
-Override (explicit):
-- `--allow-redact` allows blocked writes to proceed with in-place redaction
-
-Shared scanner library:
-- `lib/secret_scan.sh`
-
-## Skill Catalog
-
-Each skill has:
-- `SKILL.md` contract
-- optional `scripts/` executables
-
-Primary memory/continuity skills:
-
-| Skill | Purpose | Script |
-|---|---|---|
-| `context-bootstrap` | Mandatory first pass for non-trivial tasks; orchestrates decision-check + project-status + memory-retrieve into one compact Context block | `skills/context-bootstrap/scripts/bootstrap.sh` |
-| `decision-check` | Find applicable prior decisions before recommending changes | `skills/decision-check/scripts/check.sh` |
-| `decision-record` | Create immutable one-decision-per-file records | `skills/decision-record/scripts/record.sh` |
-| `memory-retrieve` | Pull minimal relevant memory context | `skills/memory-retrieve/scripts/retrieve.sh` |
-| `memory-write` | Generic structured memory writer with automatic index registration for new anchors | `skills/memory-write/scripts/write.sh` |
-| `memory-index-update` | Keep `memory/index.md` discoverable and idempotent | `skills/memory-index-update/scripts/update_index.sh` |
-| `project-status` | Summarize project state from overview + log | `skills/project-status/scripts/status.sh` |
-| `project-update` | Append structured project log updates and auto-index first-time project scaffolding | `skills/project-update/scripts/update.sh` |
-| `workflow-plan` | Generate executable plan artifacts with verification + rollback (auto-index in `--to-pattern` mode) | `skills/workflow-plan/scripts/plan.sh` |
-| `runbook-create` | Create reusable pattern/runbook docs and index them | `skills/runbook-create/scripts/create.sh` |
-| `secret-scan` | Standalone pass/redact/block scanner utility | `skills/secret-scan/scripts/scan.sh` |
-
-Additional utility skills:
-- `security-best-practices`
-- `gh-address-comments`
-
-## Memory Data Model
-
-Memory root: `memory/`
-
-- `README.md`: operational conventions for cadence, naming, and index policy
-- `index.md`: table of contents for durable anchors
-- `logs/`: chronological notes
-- `decisions/`: architectural/workflow constraints
-- `projects/`: continuity (`overview.md` + `log.md` per project)
-- `knowledge/`: stable reference notes
-- `patterns/`: reusable procedures/runbooks
-
-## Quickstart
-
-### 1) Install symlinks and run health checks
+## Install and verify
 
 ```bash
+cd ~/.config/codex-agents
+bin/install.sh --dry-run
 bin/install.sh
+bin/verify.sh
 ```
 
-`bin/install.sh` runs `bin/doctor.sh` by default after symlink reconciliation.
+The installer reconciles these owned symlinks:
 
-### 2) Run doctor explicitly (optional but recommended in CI and troubleshooting)
+| Entrypoint | Repository source |
+| --- | --- |
+| `${CODEX_HOME:-~/.codex}/AGENTS.md` | `AGENTS.md` |
+| `${CODEX_HOME:-~/.codex}/skills` | `skills/` (legacy compatibility) |
+| `~/.agents/skills` | `skills/` (documented discovery) |
+| `${CODEX_HOME:-~/.codex}/hooks.json` | `config/hooks.json` |
+| `${CODEX_HOME:-~/.codex}/control-plane-hook.py` | `hooks/control_plane.py` |
+| Three owned `${CODEX_HOME:-~/.codex}/agents/*.toml` files | `config/agents/*.toml` |
+
+Use `--codex-home` and `--agents-home` for isolated installation fixtures.
+An existing foreign hooks file is preserved: reconcile its hooks explicitly
+before installation. Unrelated custom agent files stay in place.
+
+`config/desired-state.json` owns only a small set of runtime feature values.
+Installation enables the hooks feature and removes the retired `js_repl` key,
+while preserving all other TOML values and comments. It backs up changed paths
+inside ignored `.private/install-backups/`. Symlinked config backups retain
+original contents. Installation does not replace the whole desktop config or
+change your chosen model, reasoning effort, MCP credentials, or permissions.
+
+Review the installed definitions in Codex's Hooks settings or `/hooks` before
+trusting them. Installation never grants trust or uses a trust-bypass flag.
+Restart/resume a client when needed to refresh configuration and discovery.
+
+## Policy and skill routing
+
+`AGENTS.md` is the compact global policy. `AGENTS.override.md` supplies only
+repository-maintenance guidance, avoiding duplicate loading of the global
+policy when working in this repository.
+
+`context-bootstrap` is the implicit read router. The ten subordinate memory
+skills remain available through explicit invocation and their deterministic
+scripts. Each has a small `SKILL.md`, invocation metadata, and a detailed
+`references/contract.md`. Read the applicable contract before a write.
 
 ```bash
-bin/doctor.sh
+skills/context-bootstrap/scripts/bootstrap.sh 'control plane hooks memory' \
+  --project codex-agents --max-items 5
 ```
 
-### 3) Manual fallback symlink commands (if needed)
+A complete hook-provided bootstrap for the same task satisfies the read gate.
+Unavailable checks require manual follow-up; they never mean no decision exists.
+
+| Workflow | Entrypoint |
+| --- | --- |
+| Context routing | `skills/context-bootstrap/scripts/bootstrap.sh` |
+| Effective accepted decisions | `skills/decision-check/scripts/check.sh` |
+| Bounded retrieval | `skills/memory-retrieve/scripts/retrieve.sh` |
+| Current project snapshots | `skills/project-status/scripts/status.sh` |
+| Immutable decision creation | `skills/decision-record/scripts/record.sh` |
+| Project log append | `skills/project-update/scripts/update.sh` |
+| Knowledge / chronological capture | `skills/memory-write/scripts/write.sh` |
+| New anchor registration | `skills/memory-index-update/scripts/update_index.sh` |
+| Tracked execution plans | `skills/workflow-plan/scripts/plan.sh` |
+| Reusable procedures | `skills/runbook-create/scripts/create.sh` |
+| Shared scanning | `skills/secret-scan/scripts/scan.sh` |
+
+Specialist PR-comment and Playwright skills remain available. PR work follows
+existing authorization; it asks for scope only when scope is ambiguous.
+Context7 is preferred when callable, with a primary-documentation fallback.
+
+## Memory guarantees
+
+Write only for explicit storage requests, durable decisions, reusable procedures,
+or material project-state changes. All writers share portable scanning and a
+per-memory-root kernel lock; nested index/project writes inherit a validated
+lock descriptor. The persistent `.memory-transaction.lock` must never be deleted
+or replaced while writers can run. Kernel locks release after their owners exit.
+
+High-confidence findings block writes unless `--allow-redact` is explicit.
+Low-confidence findings are redacted. Detection and replacement use the same
+rules, with a verification scan after redaction. Readers sanitize whole source
+documents before excerpts and sanitize complete stdout/stderr before release.
+Missing scanner dependencies withhold output and stop writes.
+
+Only effective records explicitly marked `Status: accepted` are binding.
+Accepted replacements retire their predecessors; proposed replacements do not.
+Missing/ambiguous targets, cycles, and competing accepted replacement branches
+return exit 3. Other invalid inputs or unavailable dependencies return exit 2.
+Bootstrap stays non-aborting and labels unavailable decision context.
+
+Project `Next` and `Blockers` fields are independent snapshots. The latest
+explicit field wins; `None` or an empty field clears it. Checked tasks are
+excluded from current actions. Missing fields inherit an earlier explicit value.
+The `--since` filter affects recent history, not current state.
+
+Locks prevent concurrent corruption; they do not roll back every failed
+multi-file operation. Immutable files are published exclusively and index
+replacements are atomic. Use snapshots for recovery from partial operations.
+
+## Hooks
+
+The authored hooks are local command handlers:
+
+- `SessionStart`: ownership summary and context restoration after compaction.
+- `UserPromptSubmit`: bounded task-derived bootstrap, with `config/project-map.json`.
+- `SubagentStart`: concise constraint and write-ownership instructions.
+- `PreToolUse`: reject direct `apply_patch` mutations to structured memory so writers
+  perform scanning, schema handling, and locking together.
+- `Stop`: one bounded continuation if a verification receipt for this turn failed.
+
+The direct-edit guard is defense in depth; it does not inspect every shell or
+hosted-tool write. Writer enforcement remains active when hooks are unavailable.
+The adapter caps context at 4,800 UTF-8 bytes, sanitizes it, and deduplicates
+matching events before retrieval. `additionalContextLimit = 0` avoids a second
+approximate token-based spill after that strict byte cap. Bookkeeping contains
+hashes/status only and never stores raw prompts or transcripts.
+
+A Stop hook does nothing without an explicit verification receipt. Record an
+actual check when session and turn IDs are known:
 
 ```bash
-ln -sfn ~/.config/codex-agents/AGENTS.md ~/.codex/AGENTS.md
-ln -sfn ~/.config/codex-agents/skills ~/.codex/skills
+python3 hooks/control_plane.py --record-check \
+  --session-id '<session-id>' --turn-id '<turn-id>' -- bin/verify.sh
 ```
 
-### 4) Validate shell scripts
+The wrapper records the command's actual result and sanitizes its output.
+A continuation already marked `stop_hook_active` is never repeated.
+Local command hooks are not a portable policy boundary for cloud orchestration.
+See [official hooks documentation](https://learn.chatgpt.com/docs/hooks).
+
+## Private memory recovery
 
 ```bash
-bash -n \
-  bin/install.sh \
-  bin/doctor.sh \
-  lib/secret_scan.sh \
-  skills/secret-scan/scripts/scan.sh \
-  skills/memory-retrieve/scripts/retrieve.sh \
-  skills/memory-write/scripts/write.sh \
-  skills/decision-check/scripts/check.sh \
-  skills/decision-record/scripts/record.sh \
-  skills/project-status/scripts/status.sh \
-  skills/project-update/scripts/update.sh \
-  skills/memory-index-update/scripts/update_index.sh \
-  skills/workflow-plan/scripts/plan.sh \
-  skills/runbook-create/scripts/create.sh
+bin/memory-snapshot.py create
+bin/memory-snapshot.py list
+bin/memory-snapshot.py restore '<snapshot-name>'
 ```
 
-### 5) Run in temp memory for safe testing
+Snapshots include visible Markdown documents and the index together. They
+exclude lock/runtime files, reject symlinks and unsafe paths, scan contents,
+verify checksums, and live in mode-700 `.private/snapshots/`. A restore preserves
+the live root and lock inode, captures a pre-restore snapshot, and restores
+Markdown documents under the writer lock. Hidden and non-Markdown files are
+outside this snapshot contract. Low-confidence content may be redacted; a
+high-confidence finding requires an explicit sanitized-copy override.
 
-```bash
-TMP_ROOT="$(mktemp -d)"
-export MEMORY_ROOT="$TMP_ROOT/memory"
-mkdir -p "$MEMORY_ROOT"
-```
+These are local recovery copies, not encrypted disaster recovery. Copy them to
+separately protected storage for machine-loss protection. Never publish private
+memory or backups with a plugin or public repository.
 
-## Operator Workflow
+## Validation and upstream updates
 
-- Use `bin/install.sh` to reconcile expected symlinks with backup-and-replace safety.
-- Use `bin/doctor.sh` to detect drift; it exits non-zero when checks fail.
-- Prefer `bin/install.sh --dry-run` before first-time setup on unknown machines.
-- Use `bin/install.sh --skip-doctor` only when sequencing setup manually.
+`bin/doctor.sh` checks structural health plus skill metadata/references, canonical
+links, config/agent schemas, index targets, dependencies, and vendor checksums.
+It distinguishes static Context7 configuration from live connectivity and does
+not claim hook trust. `bin/verify.sh` adds behavioral regression tests in disposable
+memory roots, syntax validation, and diff checks. Use `--skip-doctor` only while
+preparing installation in an isolated checkout.
 
-## Common Workflows
+`config/vendor-manifest.json` records the exact installed `.system` snapshot.
+The upstream revision is unknown; the manifest does not invent one. When Codex
+updates bundled files, doctor reports drift without resetting them. Review
+upstream changes separately from authored policy, smoke-test them, then capture
+a new manifest intentionally. Existing bundled-skill diffs remain preserved.
 
-### Check decisions before proposing architecture
+Custom role TOMLs are authored here. Their read-only defaults can be superseded
+by parent runtime permission overrides. `config/permissions.example.toml` is a
+beta migration example, not installed automatically; remove legacy sandbox
+settings before selecting profiles. Native memory, Ultrafast, plugin distribution,
+and beta permission migration remain explicit optional choices.
 
-```bash
-skills/decision-check/scripts/check.sh "skills directory and symlinks"
-```
-
-### Retrieve targeted context
-
-```bash
-skills/memory-retrieve/scripts/retrieve.sh "codex-agents current status" \
-  --scopes projects,decisions \
-  --project codex-agents
-```
-
-### Create a project execution plan
-
-```bash
-skills/workflow-plan/scripts/plan.sh \
-  --goal "Implement deterministic retrieval ranking" \
-  --project "codex-agents" \
-  --constraints "append-only logs,minimal diffs" \
-  --acceptance-criteria "tests pass,rollback documented"
-```
-
-Pattern mode (`--to-pattern`) also updates `memory/index.md` automatically.
-
-### Append project continuity update
-
-```bash
-skills/project-update/scripts/update.sh \
-  --project "codex-agents" \
-  --title "Implemented workflow-plan" \
-  --status "in progress" \
-  --notes "Added script and report contract" \
-  --next "Implement runbook-create,Run smoke tests"
-```
-
-If this is the first update for a project and scaffolding is created, index registration is automatic.
-
-### Write durable knowledge with automatic index registration
-
-```bash
-skills/memory-write/scripts/write.sh \
-  --type knowledge \
-  --title "Token handling" \
-  --body "Prefer env vars or secret manager; never commit credentials."
-```
-
-New `knowledge`/`pattern`/`project` anchors are auto-indexed through `memory-index-update`.
-
-### Create a reusable runbook and index it
-
-```bash
-skills/runbook-create/scripts/create.sh \
-  --title "Release Cutover" \
-  --when-to-use "When promoting a tested candidate to production" \
-  --steps "Validate artifacts,Deploy canary,Promote" \
-  --verification "Smoke tests pass,No elevated error rate" \
-  --failure-modes "Canary fails,Rollback incomplete"
-```
-
-### Scan text for secrets before writing
-
-```bash
-skills/secret-scan/scripts/scan.sh --text "token=abc123" --mode write
-```
-
-## Secret Enforcement Details
-
-Exit code conventions for `secret-scan`:
-- `0`: pass or redacted
-- `3`: blocked
-- `2`: argument/validation error
-
-Write-side scripts inherit the same policy and support `--allow-redact`.
-
-## Contribution Guidelines
-
-1. Keep behavior deterministic and auditable.
-2. Favor append-only updates for logs/project logs.
-3. Never silently mutate prior decision files.
-4. Keep index updates idempotent and minimal-diff.
-5. Use relative memory paths in script reports.
-6. Do not commit secrets; redaction is required.
-
-## Template-Safe Memory Tracking
-
-This repository is intended to be shareable, so personal memory entries are ignored by default.
-
-- `.gitignore` ignores `memory/**` content to avoid committing local logs, decisions, project notes, or knowledge entries by accident.
-- The memory scaffold stays tracked: `memory/README.md`, `memory/index.md`, directory structure, and `.gitkeep` placeholders.
-- Result: collaborators can clone a clean, reusable agent state layer while each user keeps private/local memory history out of git.
-
-If you intentionally want to publish durable memory artifacts, add files explicitly with `git add -f <path>` and review them carefully before commit.
-
-## Git Workflow
-
-Typical cycle:
-
-```bash
-git status
-git add <files>
-git commit -m "feat(...): ..."
-```
-
-Rollback is straightforward because state is file-based and versioned.
-
-## Relationship to `AGENTS.md`
-
-`AGENTS.md` is the runtime operating policy for agents.
-
-`README.md` is the human/operator guide for understanding and contributing to this repository.
-
-If there is ambiguity, follow `AGENTS.md` for behavior and update this README accordingly.
+Current behavior and limitations: [skills](https://learn.chatgpt.com/docs/build-skills),
+[subagents](https://learn.chatgpt.com/docs/agent-configuration/subagents),
+[permissions](https://learn.chatgpt.com/docs/permissions),
+[native memories](https://learn.chatgpt.com/docs/customization/memories).

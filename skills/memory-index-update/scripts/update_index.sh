@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -138,7 +140,7 @@ ensure_index_exists() {
     return 0
   fi
   mkdir -p "$(dirname "$index_file")"
-  cat > "$index_file" <<'EOF'
+  cat <<'EOF' | memory_create_file "$index_file"
 # Agent Memory Index
 
 This index links durable memory anchors.
@@ -157,7 +159,7 @@ ensure_section_exists() {
   if has_exact_line "$index_file" "$section"; then
     return 0
   fi
-  printf "\n%s\n" "$section" >> "$index_file"
+  { cat "$index_file"; printf "\n%s\n" "$section"; } | memory_replace_file "$index_file"
 }
 
 derive_title() {
@@ -215,13 +217,10 @@ insert_line_at() {
   local index_file="$1"
   local after_line="$2"
   local line="$3"
-  local tmp
-  tmp="$(mktemp)"
   awk -v pos="$after_line" -v ins="$line" '
     { print }
     NR == pos { print ins }
-  ' "$index_file" > "$tmp"
-  mv "$tmp" "$index_file"
+  ' "$index_file" | memory_replace_file "$index_file"
 }
 
 change=""
@@ -306,6 +305,7 @@ valid_date "$entry_date" || die "--date must be valid YYYY-MM-DD"
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
 [[ -d "$MEMORY_ROOT" ]] || die "memory root not found: $MEMORY_ROOT"
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
 
 if [[ "$rel_path" = /* ]]; then
   case "$rel_path" in

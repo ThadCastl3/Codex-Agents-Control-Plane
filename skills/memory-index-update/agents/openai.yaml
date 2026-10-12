@@ -1,0 +1,5 @@
+interface:
+  display_name: "Memory Index Update"
+  short_description: "Register discoverable durable memory anchors"
+policy:
+  allow_implicit_invocation: false

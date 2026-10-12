@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -286,7 +288,6 @@ fi
 valid_date "$entry_date" || die "--date must be valid YYYY-MM-DD"
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
-ensure_dirs "$MEMORY_ROOT"
 
 sanitize_into title "title" "$title"
 sanitize_into decision "decision" "$decision"
@@ -337,6 +338,9 @@ followups_count="$BULLET_COUNT"
 (( tradeoffs_count >= 1 && tradeoffs_count <= 8 )) || die "--tradeoffs must contain 1-8 items"
 (( followups_count >= 0 && followups_count <= 10 )) || die "--followups must contain 0-10 items"
 
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
+ensure_dirs "$MEMORY_ROOT"
+
 slug="$(slugify "$title")"
 year_month="$(printf '%s' "$entry_date" | cut -c1-7)"
 rel_path="decisions/${year_month}-${slug}.md"
@@ -373,7 +377,7 @@ done
   else
     printf -- "- (none)\n"
   fi
-} > "$target_path"
+} | memory_create_file "$target_path"
 
 echo "## Decision Record Report"
 echo "- path: \`$rel_path\`"

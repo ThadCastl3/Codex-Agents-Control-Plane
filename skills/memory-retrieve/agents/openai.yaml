@@ -1,0 +1,5 @@
+interface:
+  display_name: "Memory Retrieve"
+  short_description: "Find relevant structured memory and evidence"
+policy:
+  allow_implicit_invocation: false

@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -165,7 +167,7 @@ ensure_memory_layout() {
   local root="$1"
   mkdir -p "$root"/logs "$root"/decisions "$root"/projects "$root"/knowledge "$root"/patterns
   if [[ ! -f "$root/index.md" ]]; then
-    cat > "$root/index.md" <<'EOF'
+    cat <<'EOF' | memory_create_file "$root/index.md"
 # Agent Memory Index
 
 This index links durable memory anchors.
@@ -346,7 +348,6 @@ month_day="$(printf '%s' "$entry_date" | cut -c6-10)"
 year_month="$(printf '%s' "$entry_date" | cut -c1-7)"
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
-ensure_memory_layout "$MEMORY_ROOT"
 
 sanitize_into title "title" "$title"
 sanitize_into body "body" "$body"
@@ -355,6 +356,9 @@ sanitize_into status "status" "$status"
 sanitize_into next_items "next" "$next_items"
 sanitize_into tags "tags" "$tags"
 tags="$(normalize_tags "$tags")"
+
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
+ensure_memory_layout "$MEMORY_ROOT"
 
 write_log() {
   local file="$MEMORY_ROOT/logs/$year/$month_day.md"
@@ -415,7 +419,7 @@ write_decision() {
     printf -- "- TBD\n\n"
     printf "## Follow-ups\n"
     printf -- "- [ ] TBD\n"
-  } > "$file"
+  } | memory_create_file "$file"
 
   record_write "$file" "created"
   SUMMARY="Created a decision record with one-decision-per-file semantics."

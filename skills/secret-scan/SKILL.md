@@ -1,45 +1,12 @@
 ---
 name: secret-scan
-description: Lightweight guardrail that scans text/files for likely secrets, returning pass/redacted/blocked status for write-safe memory operations.
+description: Scan text or files before memory writes or sensitive output.
 ---
 
-# secret-scan
+# Secret Scan
 
-## Purpose
-Prevent accidental secret leakage into memory files and outputs by applying a deterministic scan + redaction policy.
+Use `scripts/scan.sh` for this workflow. Read [the contract](references/contract.md) for inputs, output, schema, and advanced options before invoking it.
 
-## Memory Root
-Not memory-location specific; this skill operates on text blobs or files.
+Write mode blocks high-confidence findings unless `--allow-redact` is explicitly supplied. Low-confidence findings are redacted. Read mode redacts without blocking. Exit 0 means pass/redacted; 3 means blocked; 2 means invalid input or unavailable runtime. Do not pass credentials as literal command arguments; prefer stdin.
 
-## When to Use
-- before memory writes (write mode)
-- before emitting excerpts from sensitive text (read mode)
-- in safety checks / doctor flows
-
-## Inputs
-Exactly one input source:
-- `--text "<blob>"`
-- `--stdin`
-- `--file "<path>"`
-
-Optional:
-- `--mode write|read` (default `write`)
-- `--allow-redact` (write mode override for high-confidence findings)
-
-## Output
-Markdown report with:
-- `Status: pass|redacted|blocked`
-- findings list
-- redacted preview (bounded)
-
-Exit codes:
-- `0` pass/redacted
-- `3` blocked
-- `2` argument/validation error
-
-## Policy
-- write mode:
-  - high-confidence findings => blocked unless `--allow-redact`
-  - low-confidence findings => redact + continue
-- read mode:
-  - redact only; never block
+Requires Python 3.11+ and the repository shared helpers.

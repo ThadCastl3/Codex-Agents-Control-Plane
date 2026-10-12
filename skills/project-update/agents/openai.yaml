@@ -1,0 +1,5 @@
+interface:
+  display_name: "Project Update"
+  short_description: "Append scanned project continuity updates"
+policy:
+  allow_implicit_invocation: false

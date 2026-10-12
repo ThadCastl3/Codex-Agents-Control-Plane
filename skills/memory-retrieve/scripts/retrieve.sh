@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Buffer and sanitize complete output; scan sources before selecting excerpts.
+SECRET_READER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_READER_REPO_ROOT="$(cd "$SECRET_READER_SCRIPT_DIR/../../.." && pwd)"
+source "$SECRET_READER_REPO_ROOT/lib/secret_scan.sh"
+
+secret_scan_reader_main() {
+
 export LC_ALL=C
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
@@ -150,16 +157,11 @@ file_epoch() {
 
 first_heading() {
   local file="$1"
-  grep -m 1 -E '^#{1,6}[[:space:]]' "$file" 2>/dev/null | sed -E 's/^#{1,6}[[:space:]]*//' || true
+  secret_scan_filter_file_read "$file" | grep -m 1 -E '^#{1,6}[[:space:]]' | sed -E 's/^#{1,6}[[:space:]]*//' || true
 }
 
 redact_excerpt() {
-  sed -E \
-    -e 's/([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=[REDACTED]/g' \
-    -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-    -e 's/\beyJ[A-Za-z0-9._-]{10,}\b/[REDACTED]/g' \
-    -e 's/\b[A-Fa-f0-9]{32,}\b/[REDACTED]/g' \
-    -e 's/(AKIA[0-9A-Z]{16})/[REDACTED]/g'
+  secret_scan_filter_read
 }
 
 trim_excerpt() {
@@ -178,7 +180,7 @@ summary_reason() {
   local heading_hit="$2"
   case "$scope" in
     decisions)
-      [[ "$heading_hit" -eq 1 ]] && echo "Authoritative decision constraints matched headings" || echo "Authoritative decision constraints matched query terms"
+      echo "Active accepted decision constraints matched query context"
       ;;
     projects)
       [[ "$heading_hit" -eq 1 ]] && echo "Current project intent/state matched headings" || echo "Current project intent/state matched query terms"
@@ -596,137 +598,23 @@ recency_score() {
 
 decision_status_score() {
   local file="$1"
-  local status
-
-  status="$(grep -m1 -E '^Status:[[:space:]]*' "$file" 2>/dev/null | sed -E 's/^Status:[[:space:]]*//' | tr '[:upper:]' '[:lower:]' || true)"
-  status="$(trim "$status")"
+  local status rel
+  rel="${file#"$MEMORY_ROOT"/}"
+  status="$(awk -F'\t' -v p="$rel" '$1=="DECISION" && $2==p {print $3}' "$decision_state_file")"
 
   case "$status" in
-    accepted|"") echo 40 ;;
+    accepted) echo 40 ;;
     proposed) echo 10 ;;
     deprecated) echo -50 ;;
     *) echo 0 ;;
   esac
 }
 
-decision_identity_file=""
-decision_has_supersedes_file=""
-decision_superseded_file=""
-decision_count_indexed=0
-decision_superseded_count=0
-
-normalize_supersede_ref() {
-  local ref="$1"
-  local norm
-
-  norm="$(printf '%s' "$ref" | tr '[:upper:]' '[:lower:]')"
-  norm="$(trim "$norm")"
-  norm="${norm//\`/}"
-  norm="$(printf '%s' "$norm" | sed -E "s/^[[:space:]'\"()\[\]{}<]+//; s/[[:space:]'\"()\[\]{}>,;:.]+$//")"
-  norm="$(printf '%s' "$norm" | sed -E 's#^\./##; s#^memory/##')"
-  printf '%s' "$norm"
-}
-
-build_decision_supersede_index() {
-  local decisions_dir="$1"
-  local file rel base base_noext line rhs ref norm_ref
-  local key1 key2 key3 matched_rel
-
-  decision_count_indexed=0
-  decision_superseded_count=0
-
-  : > "$decision_identity_file"
-  : > "$decision_has_supersedes_file"
-  : > "$decision_superseded_file"
-
-  [[ -d "$decisions_dir" ]] || {
-    trace "decision_index decisions_scanned=0 superseded_entries=0"
-    return 0
-  }
-
-  while IFS= read -r file || [[ -n "$file" ]]; do
-    [[ -f "$file" ]] || continue
-    rel="${file#"$MEMORY_ROOT"/}"
-    rel="$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')"
-    base="$(basename "$rel")"
-    base_noext="${base%.md}"
-
-    printf '%s\t%s\n' "$rel" "$rel" >> "$decision_identity_file"
-    printf '%s\t%s\n' "$base" "$rel" >> "$decision_identity_file"
-    printf '%s\t%s\n' "$base_noext" "$rel" >> "$decision_identity_file"
-    decision_count_indexed=$((decision_count_indexed + 1))
-  done < <(find "$decisions_dir" -type f -name '*.md' 2>/dev/null | sort)
-
-  if [[ ! -s "$decision_identity_file" ]]; then
-    trace "decision_index decisions_scanned=0 superseded_entries=0"
-    return 0
-  fi
-  sort -u "$decision_identity_file" -o "$decision_identity_file"
-
-  while IFS= read -r file || [[ -n "$file" ]]; do
-    [[ -f "$file" ]] || continue
-    rel="${file#"$MEMORY_ROOT"/}"
-    rel="$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')"
-
-    while IFS= read -r line || [[ -n "$line" ]]; do
-      [[ -n "$line" ]] || continue
-      rhs="${line#Supersedes:}"
-      if [[ -z "$(trim "$rhs")" ]]; then
-        continue
-      fi
-      printf '%s\n' "$rel" >> "$decision_has_supersedes_file"
-
-      while IFS= read -r ref || [[ -n "$ref" ]]; do
-        norm_ref="$(normalize_supersede_ref "$ref")"
-        [[ -n "$norm_ref" ]] || continue
-
-        key1="$norm_ref"
-        key2="$(basename "$norm_ref")"
-        key3="${key2%.md}"
-
-        matched_rel="$(awk -F $'\t' -v k="$key1" '$1==k {print $2; exit}' "$decision_identity_file" || true)"
-        if [[ -z "$matched_rel" ]]; then
-          matched_rel="$(awk -F $'\t' -v k="$key2" '$1==k {print $2; exit}' "$decision_identity_file" || true)"
-        fi
-        if [[ -z "$matched_rel" ]]; then
-          matched_rel="$(awk -F $'\t' -v k="$key3" '$1==k {print $2; exit}' "$decision_identity_file" || true)"
-        fi
-
-        if [[ -n "$matched_rel" ]]; then
-          printf '%s\n' "$matched_rel" >> "$decision_superseded_file"
-        fi
-      done < <(printf '%s\n' "$rhs" | tr ',' '\n')
-    done < <(grep -E '^Supersedes:[[:space:]]*' "$file" 2>/dev/null || true)
-  done < <(find "$decisions_dir" -type f -name '*.md' 2>/dev/null | sort)
-
-  if [[ -s "$decision_has_supersedes_file" ]]; then
-    sort -u "$decision_has_supersedes_file" -o "$decision_has_supersedes_file"
-  fi
-  if [[ -s "$decision_superseded_file" ]]; then
-    sort -u "$decision_superseded_file" -o "$decision_superseded_file"
-    decision_superseded_count="$(wc -l < "$decision_superseded_file" | tr -d ' ')"
-  fi
-
-  trace "decision_index decisions_scanned=${decision_count_indexed} superseded_entries=${decision_superseded_count}"
-}
-
-decision_supersede_penalty() {
+decision_is_active() {
   local file="$1"
   local rel
-  local penalty
-
-  penalty=0
   rel="${file#"$MEMORY_ROOT"/}"
-  rel="$(printf '%s' "$rel" | tr '[:upper:]' '[:lower:]')"
-
-  if [[ -s "$decision_has_supersedes_file" ]] && grep -Fxq -- "$rel" "$decision_has_supersedes_file" 2>/dev/null; then
-    penalty=$((penalty - 10))
-  fi
-  if [[ -s "$decision_superseded_file" ]] && grep -Fxq -- "$rel" "$decision_superseded_file" 2>/dev/null; then
-    penalty=$((penalty - 10))
-  fi
-
-  echo "$penalty"
+  awk -F'\t' -v p="$rel" '$1=="DECISION" && $2==p && $4=="active" {found=1} END {exit !found}' "$decision_state_file"
 }
 
 project_bias_score() {
@@ -915,12 +803,24 @@ selected_raw_file="$(mktemp)"
 selected_file="$(mktemp)"
 all_candidates_scope_tmp="$(mktemp)"
 selected_paths_file="$(mktemp)"
-decision_identity_file="$(mktemp)"
-decision_has_supersedes_file="$(mktemp)"
-decision_superseded_file="$(mktemp)"
-trap 'rm -f "$candidates_file" "$sorted_by_score_file" "$selected_raw_file" "$selected_file" "$all_candidates_scope_tmp" "$selected_paths_file" "$decision_identity_file" "$decision_has_supersedes_file" "$decision_superseded_file"' EXIT
+decision_state_file="$(mktemp)"
+expanded_candidates_tmp="$(mktemp)"
+trap 'rm -f "$candidates_file" "$sorted_by_score_file" "$selected_raw_file" "$selected_file" "$all_candidates_scope_tmp" "$selected_paths_file" "$decision_state_file" "$expanded_candidates_tmp"' EXIT
 
-build_decision_supersede_index "$MEMORY_ROOT/decisions"
+decision_state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/lib/decision_state.py"
+if [[ ",$scopes_display," == *,decisions,* && -d "$MEMORY_ROOT/decisions" ]]; then
+  if ! python3 "$decision_state_script" "$MEMORY_ROOT" > "$decision_state_file"; then
+    echo "Decision context unavailable: effective decision state could not be resolved."
+    exit 2
+  fi
+  if grep -q '^DIAGNOSTIC' "$decision_state_file"; then
+    echo "Decision context unavailable: supersession graph requires review."
+    awk -F'\t' '$1=="DIAGNOSTIC" {print "- " $2}' "$decision_state_file"
+    exit 3
+  fi
+  indexed_decision_count="$(awk -F'\t' '$1=="DECISION" {n++} END {print n+0}' "$decision_state_file")"
+  trace "decision_index decisions_scanned=${indexed_decision_count}"
+fi
 
 for scope in "${scopes[@]}"; do
   scope_dir="$MEMORY_ROOT/$scope"
@@ -928,8 +828,14 @@ for scope in "${scopes[@]}"; do
 
   : > "$all_candidates_scope_tmp"
   candidate_files_for_scope "$scope_dir" | sort -u > "$all_candidates_scope_tmp"
+  if [[ "$scope" == "decisions" ]]; then
+    python3 "$decision_state_script" "$MEMORY_ROOT" --state "$decision_state_file" \
+      --expand-candidates "$all_candidates_scope_tmp" > "$expanded_candidates_tmp"
+  else
+    awk '{print $0 "\t" $0}' "$all_candidates_scope_tmp" > "$expanded_candidates_tmp"
+  fi
 
-  while IFS= read -r file || [[ -n "$file" ]]; do
+  while IFS=$'\t' read -r file relevance_file || [[ -n "$file" ]]; do
     [[ -f "$file" ]] || continue
 
     file_ts="$(file_epoch "$file")"
@@ -939,10 +845,13 @@ for scope in "${scopes[@]}"; do
       fi
     fi
 
-    analysis="$(analyze_match_lines "$file" "$token_blob")"
+    analysis="$(analyze_match_lines "$relevance_file" "$token_blob")"
     IFS=$'\t' read -r title_points heading_points section_points body_points heading_hits title_hits hit_lines first_line <<< "$analysis"
+    if [[ "$relevance_file" != "$file" ]]; then
+      first_line=1
+    fi
 
-    file_name_match_score="$(filename_score "$file")"
+    file_name_match_score="$(filename_score "$relevance_file")"
     title_points=$((title_points + file_name_match_score))
     filename_hit=0
     if [[ "$file_name_match_score" -gt 0 ]]; then
@@ -967,7 +876,6 @@ for scope in "${scopes[@]}"; do
     supersede_penalty=0
     if [[ "$scope" == "decisions" ]]; then
       status_score="$(decision_status_score "$file")"
-      supersede_penalty="$(decision_supersede_penalty "$file")"
     fi
 
     project_bias="$(project_bias_score "$scope" "$file" "$project")"
@@ -1010,7 +918,7 @@ for scope in "${scopes[@]}"; do
       "$match_heading" \
       "$match_section" \
       "$match_body" >> "$candidates_file"
-  done < "$all_candidates_scope_tmp"
+  done < "$expanded_candidates_tmp"
 done
 
 if [[ -s "$candidates_file" ]]; then
@@ -1085,7 +993,7 @@ auto_add_line() {
 while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -n "$line" ]] || continue
   IFS=$'\t' read -r score _prio scope _file _line heading_hit _ts _ms _rs _ss _pb _sp filename_hit title_hit _base _intent _sup _mt _mh _msx _mb <<< "$line"
-  if [[ "$scope" == "decisions" ]]; then
+  if [[ "$scope" == "decisions" ]] && decision_is_active "$_file"; then
     decision_threshold="$(scope_threshold "decisions")"
     if [[ "$score" -ge "$decision_threshold" || "$heading_hit" -eq 1 || "$filename_hit" -eq 1 || "$title_hit" -eq 1 ]]; then
       top_decision_line="$line"
@@ -1130,6 +1038,9 @@ while IFS=$'\t' read -r score _priority scope file _line heading_hit _ts _ms _rs
   rel="${file#"$MEMORY_ROOT"/}"
   heading="$(first_heading "$file")"
   reason="$(summary_reason "$scope" "$heading_hit")"
+  if [[ "$scope" == "decisions" ]] && ! decision_is_active "$file"; then
+    reason="Related advisory decision record (not binding)"
+  fi
 
   if [[ -n "$heading" ]]; then
     echo "- ${reason}: \`${rel}\` (${heading})"
@@ -1159,10 +1070,13 @@ while IFS=$'\t' read -r _score _priority scope file line heading_hit _ts _ms _rs
     end="$lc"
   fi
 
-  excerpt="$(sed -n "${line}p" "$file" 2>/dev/null || true)"
+  excerpt="$(secret_scan_filter_file_read "$file" | sed -n "${line}p")"
   excerpt="$(printf '%s' "$excerpt" | redact_excerpt)"
   excerpt="$(trim_excerpt "$excerpt" 200)"
   why="$(evidence_reason "$scope" "$heading_hit")"
+  if [[ "$scope" == "decisions" ]] && ! decision_is_active "$file"; then
+    why="$why This record is advisory and supplies no binding constraints."
+  fi
 
   echo "${ev_count}) ${rel} (lines ${start}-${end})"
   echo "   - ${why}"
@@ -1191,3 +1105,7 @@ if [[ "$explain_mode" -eq 1 ]]; then
     echo "   - final score: ${final_score}"
   done < "$selected_file"
 fi
+
+}
+
+secret_scan_run_read_main secret_scan_reader_main "$@"

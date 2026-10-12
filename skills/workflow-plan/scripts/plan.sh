@@ -6,6 +6,8 @@ export LC_ALL=C
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 source "$REPO_ROOT/lib/secret_scan.sh"
+source "$REPO_ROOT/lib/memory_transaction.sh"
+MEMORY_TRANSACTION_ARGS=("$@")
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
 
@@ -291,6 +293,7 @@ if [[ -z "$title" ]]; then
 fi
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
+memory_transaction_begin "$MEMORY_ROOT" "${BASH_SOURCE[0]}" "${MEMORY_TRANSACTION_ARGS[@]}"
 mkdir -p "$MEMORY_ROOT/projects" "$MEMORY_ROOT/patterns"
 
 constraints_file="$(mktemp)"
@@ -401,7 +404,7 @@ fi
   printf -- "- Constraint drift if implementation shortcuts bypass documented limits.\n"
   printf -- "- Incomplete verification may miss edge-case regressions.\n"
   printf -- "- Scope changes may require a follow-up decision record.\n"
-} > "$plan_path"
+} | memory_create_file "$plan_path"
 
 if [[ "$to_pattern" -eq 1 ]]; then
   index_script="$REPO_ROOT/skills/memory-index-update/scripts/update_index.sh"

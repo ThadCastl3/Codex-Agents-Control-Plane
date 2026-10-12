@@ -7,19 +7,19 @@ metadata:
 
 # PR Comment Handler
 
-Guide to find the open PR for the current branch and address its comments with gh CLI. Run all `gh` commands with elevated network access.
+Find the open PR for the current branch and address the authorized comments with gh CLI. Use normal execution; request elevated network access only when the sandbox requires it.
 
-Prereq: ensure `gh` is authenticated (for example, run `gh auth login` once), then run `gh auth status` with escalated permissions (include workflow/repo scopes) so `gh` commands succeed. If sandboxing blocks `gh auth status`, rerun it with `sandbox_permissions=require_escalated`.
+Prereq: run `gh auth status` without printing credentials. If authentication is missing, ask the user to authenticate. If the sandbox blocks the command, retry with the required escalation.
 
 ## 1) Inspect comments needing attention
 - Run scripts/fetch_comments.py which will print out all the comments and review threads on the PR
 
-## 2) Ask the user for clarification
+## 2) Resolve the authorized scope
 - Number all the review threads and comments and provide a short summary of what would be required to apply a fix for it
-- Ask the user which numbered comments should be addressed
+- Follow the user's existing selection or authorization to address all actionable comments. Ask which numbered comments to address only when that scope remains ambiguous.
 
-## 3) If user chooses comments
-- Apply fixes for the selected comments
+## 3) Address authorized comments
+- Apply fixes for the authorized comments and run relevant verification.
 
 Notes:
-- If gh hits auth/rate issues mid-run, prompt the user to re-authenticate with `gh auth login`, then retry.
+- Distinguish authentication failures from rate limits; re-authenticate only when authentication is actually missing or invalid.

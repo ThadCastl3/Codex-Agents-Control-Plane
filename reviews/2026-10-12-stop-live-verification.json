@@ -1,0 +1,70 @@
+{
+  "started_at": "2026-10-12T20:28:39.254154+00:00",
+  "status": "passed",
+  "ephemeral": true,
+  "events": [
+    {
+      "method": "turn/started",
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac"
+    },
+    {
+      "method": "hook/started",
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "run_id": "stop:4:/Users/axios/.codex/hooks.json",
+      "receipt_status_at_start": "failed"
+    },
+    {
+      "method": "hook/started",
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "run_id": "stop:4:/Users/axios/.codex/hooks.json",
+      "receipt_status_at_start": "failed"
+    },
+    {
+      "method": "turn/completed",
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "status": "completed"
+    }
+  ],
+  "recorded_checks": [
+    {
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "exit_code": 1,
+      "receipt_status": "failed"
+    }
+  ],
+  "stop_runs": [
+    {
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "run_id": "stop:4:/Users/axios/.codex/hooks.json",
+      "status": "blocked",
+      "entries": [
+        {
+          "kind": "feedback",
+          "text": "The recorded control-plane verification failed. Run bin/verify.sh and resolve its failures before completing this turn."
+        }
+      ],
+      "source_path": "/Users/axios/.codex/hooks.json",
+      "duration_ms": 55
+    },
+    {
+      "turn_id": "01a131cd-9676-7161-bddd-565f55633dac",
+      "run_id": "stop:4:/Users/axios/.codex/hooks.json",
+      "status": "completed",
+      "entries": [],
+      "source_path": "/Users/axios/.codex/hooks.json",
+      "duration_ms": 57
+    }
+  ],
+  "receipts_removed": true,
+  "trusted_stop_definition": {
+    "enabled": true,
+    "trust_status": "trusted",
+    "source_path": "/Users/axios/.codex/hooks.json"
+  },
+  "thread_id": "01a131cd-9613-7841-b5a4-59c058bfad26",
+  "session_id": "01a131cd-9613-7841-b5a4-59c058bfad26",
+  "model": "gpt-6.1-sol",
+  "result": "One real Stop continuation, followed by completion while the matching receipt remained failed.",
+  "stop_hook_active_observation": "Guard branch inferred from the matching failed receipt plus successful empty second Stop output; raw hook input is not exposed by app-server notifications.",
+  "finished_at": "2026-10-12T20:28:50.011960+00:00"
+}

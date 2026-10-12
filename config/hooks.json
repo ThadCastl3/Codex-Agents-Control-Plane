@@ -1,0 +1,68 @@
+{
+  "description": "Local control-plane context and direct memory edit guard",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/control-plane-hook.py\"",
+            "timeout": 20,
+            "additionalContextLimit": 0,
+            "statusMessage": "Loading control-plane context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/control-plane-hook.py\"",
+            "timeout": 20,
+            "additionalContextLimit": 0,
+            "statusMessage": "Retrieving task context"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/control-plane-hook.py\"",
+            "timeout": 5,
+            "additionalContextLimit": 0
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/control-plane-hook.py\"",
+            "timeout": 5,
+            "statusMessage": "Checking direct memory edits"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/control-plane-hook.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

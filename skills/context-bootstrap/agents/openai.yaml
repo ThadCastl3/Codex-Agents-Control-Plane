@@ -1,0 +1,5 @@
+interface:
+  display_name: "Context Bootstrap"
+  short_description: "Load applicable decisions and project evidence"
+policy:
+  allow_implicit_invocation: true

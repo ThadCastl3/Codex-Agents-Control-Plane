@@ -13,6 +13,9 @@ __pycache__/
 .env
 .env.*
 
+# Private recovery copies and hook bookkeeping remain local to this repository.
+.private/
+
 # Keep memory scaffold tracked, but ignore all personal memory content
 memory/**
 !memory/README.md

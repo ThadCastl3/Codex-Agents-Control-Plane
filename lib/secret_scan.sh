@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
-# Shared secret scanning helpers for write/read memory flows.
-# This library is bash 3.2 compatible and relies on global outputs:
-#   SCAN_STATUS, SCAN_REDACTED_TEXT, SCAN_FINDINGS, SCAN_HAS_HIGH_CONF
+# Bash 3.2-compatible interface to the portable scanner. Never eval its output.
+SECRET_SCAN_LIBRARY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_SCAN_PYTHON_SCRIPT="$SECRET_SCAN_LIBRARY_DIR/secret_scan.py"
+SECRET_SCAN_RUNTIME_READY=0
 
 SCAN_STATUS="pass"
 SCAN_REDACTED_TEXT=""
@@ -16,121 +17,106 @@ secret_scan_reset() {
   SCAN_HAS_HIGH_CONF=0
 }
 
-secret_scan__add_finding() {
-  local level="$1"
-  local label="$2"
-  local line="${level}: ${label}"
-  if [[ -n "$SCAN_FINDINGS" ]] && printf '%s\n' "$SCAN_FINDINGS" | grep -Fxq -- "$line" 2>/dev/null; then
-    return 0
+secret_scan_require_runtime() {
+  [[ "$SECRET_SCAN_RUNTIME_READY" == "1" ]] && return 0
+  if ! command -v python3 >/dev/null 2>&1 || [[ ! -f "$SECRET_SCAN_PYTHON_SCRIPT" ]]; then
+    echo "Error: Python 3 secret scanner is required; no data emitted." >&2
+    return 2
   fi
-  if [[ -n "$SCAN_FINDINGS" ]]; then
-    SCAN_FINDINGS="${SCAN_FINDINGS}"$'\n'"${line}"
-  else
-    SCAN_FINDINGS="${line}"
+  if ! python3 "$SECRET_SCAN_PYTHON_SCRIPT" --self-check >/dev/null 2>&1; then
+    echo "Error: secret scanner unavailable or failed; no data emitted." >&2
+    return 2
   fi
-}
-
-secret_scan__mark_high() {
-  SCAN_HAS_HIGH_CONF=1
+  SECRET_SCAN_RUNTIME_READY=1
 }
 
 secret_scan__scan_text() {
-  local input="$1"
-  local out="$1"
-
+  local input="$1" response finding count i
   secret_scan_reset
-
-  if printf '%s' "$out" | grep -Eq -- '-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
-    secret_scan__mark_high
-    secret_scan__add_finding "HIGH" "Private key block"
-    out="$(printf '%s\n' "$out" | awk '
-      BEGIN { in_key=0 }
-      /-----BEGIN [A-Z ]*PRIVATE KEY-----/ { if (!in_key) print "[REDACTED PRIVATE KEY BLOCK]"; in_key=1; next }
-      /-----END [A-Z ]*PRIVATE KEY-----/ { in_key=0; next }
-      { if (!in_key) print }
-    ')"
+  secret_scan_require_runtime || return 2
+  if ! response="$(printf '%s' "$input" | python3 "$SECRET_SCAN_PYTHON_SCRIPT" --mode read --format shell 2>/dev/null)"; then
+    echo "Error: secret scanner unavailable or failed; no data emitted." >&2
+    return 2
   fi
-
-  if printf '%s' "$out" | grep -Eiq -- 'Bearer[[:space:]]+[A-Za-z0-9._-]{20,}'; then
-    secret_scan__mark_high
-    secret_scan__add_finding "HIGH" "Bearer token"
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'AKIA[0-9A-Z]{16}'; then
-    secret_scan__mark_high
-    secret_scan__add_finding "HIGH" "AWS access key"
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'gh[pousr]_[A-Za-z0-9]{20,}'; then
-    secret_scan__mark_high
-    secret_scan__add_finding "HIGH" "GitHub token"
-  fi
-  if printf '%s' "$out" | grep -Eq -- 'sk-[A-Za-z0-9_-]{20,}'; then
-    secret_scan__mark_high
-    secret_scan__add_finding "HIGH" "API key-style token"
-  fi
-  if printf '%s' "$out" | grep -Eiq -- '\beyJ[A-Za-z0-9._-]{10,}\b'; then
-    secret_scan__add_finding "LOW" "JWT-like token"
-  fi
-  if printf '%s' "$out" | grep -Eq -- '\b[A-Fa-f0-9]{32,}\b'; then
-    secret_scan__add_finding "LOW" "Long hex token-like string"
-  fi
-  if printf '%s' "$out" | grep -Eiq -- '([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+'; then
-    secret_scan__add_finding "LOW" "Secret assignment value"
-  fi
-
-  out="$(printf '%s' "$out" | sed -E \
-    -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]{20,}/\1[REDACTED]/g' \
-    -e 's/(AKIA[0-9A-Z]{16})/[REDACTED]/g' \
-    -e 's/(gh[pousr]_[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/(sk-[A-Za-z0-9_-]{20,})/[REDACTED]/g' \
-    -e 's/\beyJ[A-Za-z0-9._-]{10,}\b/[REDACTED]/g' \
-    -e 's/\b[A-Fa-f0-9]{32,}\b/[REDACTED]/g' \
-    -e 's/([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=[REDACTED]/g')"
-
-  SCAN_REDACTED_TEXT="$out"
+  {
+    IFS= read -r SCAN_STATUS
+    IFS= read -r SCAN_HAS_HIGH_CONF
+    IFS= read -r count
+    [[ "$SCAN_STATUS" == "pass" || "$SCAN_STATUS" == "redacted" ]] || return 2
+    [[ "$SCAN_HAS_HIGH_CONF" == "0" || "$SCAN_HAS_HIGH_CONF" == "1" ]] || return 2
+    [[ "$count" =~ ^[0-9]+$ ]] || return 2
+    i=0
+    while (( i < count )); do
+      IFS= read -r finding || return 2
+      if [[ -n "$SCAN_FINDINGS" ]]; then
+        SCAN_FINDINGS="$SCAN_FINDINGS"$'\n'"$finding"
+      else
+        SCAN_FINDINGS="$finding"
+      fi
+      i=$((i + 1))
+    done
+    SCAN_REDACTED_TEXT="$(cat)"
+  } <<< "$response"
 }
 
 secret_scan_text_write() {
-  local input="$1"
-  local allow_redact="${2:-0}"
-  secret_scan__scan_text "$input"
-
+  local input="$1" allow_redact="${2:-0}"
+  secret_scan__scan_text "$input" || return 2
   if [[ "$SCAN_HAS_HIGH_CONF" -eq 1 && "$allow_redact" != "1" ]]; then
     SCAN_STATUS="blocked"
     return 3
-  fi
-
-  if [[ -n "$SCAN_FINDINGS" ]]; then
-    SCAN_STATUS="redacted"
-  else
-    SCAN_STATUS="pass"
   fi
   return 0
 }
 
 secret_scan_text_read() {
-  local input="$1"
-  secret_scan__scan_text "$input"
-  if [[ -n "$SCAN_FINDINGS" ]]; then
-    SCAN_STATUS="redacted"
-  else
-    SCAN_STATUS="pass"
-  fi
-  return 0
+  secret_scan__scan_text "$1"
 }
 
 secret_scan_file_write() {
-  local path="$1"
-  local allow_redact="${2:-0}"
+  local path="$1" allow_redact="${2:-0}" input
   [[ -f "$path" ]] || return 2
-  local input
-  input="$(cat "$path")"
+  input="$(cat "$path")" || return 2
   secret_scan_text_write "$input" "$allow_redact"
 }
 
 secret_scan_file_read() {
-  local path="$1"
+  local path="$1" input
   [[ -f "$path" ]] || return 2
-  local input
-  input="$(cat "$path")"
+  input="$(cat "$path")" || return 2
   secret_scan_text_read "$input"
+}
+
+secret_scan_filter_read() {
+  secret_scan_require_runtime || return 2
+  python3 "$SECRET_SCAN_PYTHON_SCRIPT" --mode read --format text
+}
+
+secret_scan_filter_file_read() {
+  local path="$1"
+  if [[ ! -f "$path" ]]; then
+    echo "Error: scanner source file unavailable; no data emitted." >&2
+    return 2
+  fi
+  secret_scan_filter_read < "$path"
+}
+
+secret_scan_run_read_main() {
+  local child_status
+  secret_scan_require_runtime || return 2
+  SECRET_SCAN_OUTPUT_DIR="$(mktemp -d)" || return 2
+  trap 'rm -rf "$SECRET_SCAN_OUTPUT_DIR"' EXIT
+  # Its own cleanup traps stay in the subshell; retain its errexit behavior.
+  set +e
+  ( set -e; "$@" ) > "$SECRET_SCAN_OUTPUT_DIR/stdout" 2> "$SECRET_SCAN_OUTPUT_DIR/stderr"
+  child_status=$?
+  set -e
+  if ! secret_scan_filter_file_read "$SECRET_SCAN_OUTPUT_DIR/stdout" > "$SECRET_SCAN_OUTPUT_DIR/safe-stdout" ||
+     ! secret_scan_filter_file_read "$SECRET_SCAN_OUTPUT_DIR/stderr" > "$SECRET_SCAN_OUTPUT_DIR/safe-stderr"; then
+    echo "Error: secret scanner failed; reader output withheld." >&2
+    return 2
+  fi
+  cat "$SECRET_SCAN_OUTPUT_DIR/safe-stdout"
+  cat "$SECRET_SCAN_OUTPUT_DIR/safe-stderr" >&2
+  return "$child_status"
 }

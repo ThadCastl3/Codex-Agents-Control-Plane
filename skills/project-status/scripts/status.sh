@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Buffer and sanitize complete output; scan sources before selecting excerpts.
+SECRET_READER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SECRET_READER_REPO_ROOT="$(cd "$SECRET_READER_SCRIPT_DIR/../../.." && pwd)"
+source "$SECRET_READER_REPO_ROOT/lib/secret_scan.sh"
+
+secret_scan_reader_main() {
+
 export LC_ALL=C
 
 DEFAULT_MEMORY_ROOT="${MEMORY_ROOT:-$HOME/.config/codex-agents/memory}"
@@ -59,14 +66,7 @@ date_to_epoch() {
 }
 
 redact_inline() {
-  sed -E \
-    -e 's/(Bearer[[:space:]]+)[A-Za-z0-9._-]+/\1[REDACTED]/g' \
-    -e 's/(AKIA[0-9A-Z]{16})/[REDACTED]/g' \
-    -e 's/(gh[pousr]_[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/(sk-[A-Za-z0-9]{20,})/[REDACTED]/g' \
-    -e 's/\beyJ[A-Za-z0-9._-]{10,}\b/[REDACTED]/g' \
-    -e 's/\b[A-Fa-f0-9]{32,}\b/[REDACTED]/g' \
-    -e 's/([Pp]assword|[Tt]oken|[Ss]ecret|[Aa][Pp][Ii][-_ ]?[Kk]ey)[[:space:]]*[:=][[:space:]]*[^[:space:]]+/\1=[REDACTED]/g'
+  secret_scan_filter_read
 }
 
 append_unique_line() {
@@ -96,25 +96,28 @@ extract_heading_block() {
       }
       if (in_sec) print trim(line)
     }
-  ' "$file"
+  ' < <(secret_scan_filter_file_read "$file")
 }
 
 extract_first_lines_fallback() {
   local file="$1"
-  sed -n '1,20p' "$file" | sed -E 's/[[:space:]]+/ /g' | sed -E 's/^ +| +$//g' | awk 'NF>0'
+  secret_scan_filter_file_read "$file" | sed -n '1,20p' | sed -E 's/[[:space:]]+/ /g' | sed -E 's/^ +| +$//g' | awk 'NF>0'
 }
 
 collect_list_items() {
   local input="$1"
   local out_file="$2"
   local skip_none="${3:-0}"
+  local skip_completed="${4:-0}"
   local line item
   local -a parts=()
   while IFS= read -r line || [[ -n "$line" ]]; do
     line="$(trim "$line")"
     [[ -z "$line" ]] && continue
     line="${line#- }"
-    line="${line#* [ ] }"
+    if [[ "$skip_completed" == "1" && "$line" =~ ^\[[xX]\]([[:space:]]|$) ]]; then
+      continue
+    fi
     parts=()
     IFS=',' read -r -a parts <<< "$line"
     for item in "${parts[@]:-}"; do
@@ -242,12 +245,15 @@ entries_all_tmp="$(mktemp)"
 entries_since_tmp="$(mktemp)"
 selected_entries_tmp="$(mktemp)"
 evidence_tmp="$(mktemp)"
-trap 'rm -f "$goal_tmp" "$constraints_tmp" "$next_tmp" "$blockers_tmp" "$updates_tmp" "$entries_all_tmp" "$entries_since_tmp" "$selected_entries_tmp" "$evidence_tmp"' EXIT
+safe_log_tmp=""
+trap 'rm -f "$goal_tmp" "$constraints_tmp" "$next_tmp" "$blockers_tmp" "$next_tmp".* "$blockers_tmp".* "$updates_tmp" "$entries_all_tmp" "$entries_since_tmp" "$selected_entries_tmp" "$evidence_tmp" "$safe_log_tmp"' EXIT
 
 goal_text=""
 constraints_text=""
 current_status=""
 missing_files=()
+next_snapshot_found=0
+blockers_snapshot_found=0
 
 # Overview parsing
 if [[ -f "$overview_file" ]]; then
@@ -288,6 +294,9 @@ fi
 
 # Log parsing
 if [[ -f "$log_file" ]]; then
+  safe_log_tmp="$(mktemp)"
+  secret_scan_filter_file_read "$log_file" > "$safe_log_tmp"
+  log_file="$safe_log_tmp"
   total_lines="$(wc -l < "$log_file" | tr -d ' ')"
   header_lines=()
   while IFS= read -r ln || [[ -n "$ln" ]]; do
@@ -339,7 +348,7 @@ if [[ -f "$log_file" ]]; then
         BEGIN { in_next=0 }
         /^Next:[[:space:]]*$/ { in_next=1; next }
         /^Next:[[:space:]]+/ { s=$0; sub(/^Next:[[:space:]]*/, "", s); print s; in_next=1; next }
-        /^[A-Za-z][A-Za-z \/ -]*:[[:space:]]*$/ && in_next { in_next=0; next }
+        /^[A-Za-z][A-Za-z \/ -]*:/ && in_next { in_next=0; next }
         in_next { print }
       ')"
 
@@ -348,7 +357,7 @@ if [[ -f "$log_file" ]]; then
         BEGIN { in_blk=0 }
         /^Blockers([[:space:]]*\/[[:space:]]*Risks)?:[[:space:]]*$/ { in_blk=1; next }
         /^Blockers([[:space:]]*\/[[:space:]]*Risks)?:[[:space:]]+/ { s=$0; sub(/^Blockers([[:space:]]*\/[[:space:]]*Risks)?:[[:space:]]*/, "", s); print s; in_blk=1; next }
-        /^[A-Za-z][A-Za-z \/ -]*:[[:space:]]*$/ && in_blk { in_blk=0; next }
+        /^[A-Za-z][A-Za-z \/ -]*:/ && in_blk { in_blk=0; next }
         in_blk { print }
       ')"
 
@@ -367,12 +376,14 @@ if [[ -f "$log_file" ]]; then
           "$header_raw" >> "$entries_since_tmp"
       fi
 
-      # Keep section data keyed by range files for later aggregation.
-      if [[ -n "$next_block" ]]; then
-        collect_list_items "$next_block" "$next_tmp.$start.$end"
+      # Preserve explicit empty/None fields as snapshots that clear older data.
+      if sed -n "${start},${end}p" "$log_file" | grep -q '^Next:'; then
+        : > "$next_tmp.$start.$end"
+        collect_list_items "$next_block" "$next_tmp.$start.$end" 1 1
       fi
-      if [[ -n "$blockers_block" ]]; then
-        collect_list_items "$blockers_block" "$blockers_tmp.$start.$end" 1
+      if sed -n "${start},${end}p" "$log_file" | grep -Eq '^Blockers([[:space:]]*/[[:space:]]*Risks)?:'; then
+        : > "$blockers_tmp.$start.$end"
+        collect_list_items "$blockers_block" "$blockers_tmp.$start.$end" 1 1
       fi
     done
   fi
@@ -385,31 +396,34 @@ if [[ -f "$log_file" ]]; then
   fi
 
   if [[ -s "$selected_entries_tmp" ]]; then
-    # Current status from most recent selected entry.
-    current_status_raw="$(head -n1 "$selected_entries_tmp" | awk -F'\t' '{print $5}')"
+    # Current fields use all entries; --since only selects the update history.
+    current_status_raw="$(awk -F'\t' '$5!="__NONE__" && $5!="" {print $5; exit}' "$entries_all_tmp")"
     if [[ "$current_status_raw" == "__NONE__" || -z "$current_status_raw" ]]; then
-      current_status="$(head -n1 "$selected_entries_tmp" | awk -F'\t' '{print $6}' | redact_inline)"
+      current_status="$(head -n1 "$entries_all_tmp" | awk -F'\t' '{print $6}' | redact_inline)"
     else
       current_status="$(printf '%s' "$current_status_raw" | redact_inline)"
     fi
     [[ -n "$current_status" ]] || current_status="(No status line found in latest entry)"
 
-    # Aggregate next actions and blockers from most recent 1-3 entries.
-    idx=0
+    # Each field independently uses its latest explicit snapshot. An omitted
+    # field inherits; an empty or None field clears prior actions/blockers.
+    next_snapshot_found=0
+    blockers_snapshot_found=0
     while IFS=$'\t' read -r _d _e start end _s _sum _h || [[ -n "$start" ]]; do
-      idx=$((idx + 1))
-      (( idx <= 3 )) || break
-      if [[ -f "$next_tmp.$start.$end" ]]; then
-        while IFS= read -r l || [[ -n "$l" ]]; do
-          append_unique_line "$next_tmp" "$l"
-        done < "$next_tmp.$start.$end"
+      if [[ "$next_snapshot_found" -eq 0 && -f "$next_tmp.$start.$end" ]]; then
+        cp "$next_tmp.$start.$end" "$next_tmp"
+        next_snapshot_found=1
+        printf '%s (lines %s-%s)\n' "$rel_log" "$start" "$end" >> "$evidence_tmp"
       fi
-      if [[ -f "$blockers_tmp.$start.$end" ]]; then
-        while IFS= read -r l || [[ -n "$l" ]]; do
-          append_unique_line "$blockers_tmp" "$l"
-        done < "$blockers_tmp.$start.$end"
+      if [[ "$blockers_snapshot_found" -eq 0 && -f "$blockers_tmp.$start.$end" ]]; then
+        cp "$blockers_tmp.$start.$end" "$blockers_tmp"
+        blockers_snapshot_found=1
+        printf '%s (lines %s-%s)\n' "$rel_log" "$start" "$end" >> "$evidence_tmp"
       fi
-    done < "$selected_entries_tmp"
+      if [[ "$next_snapshot_found" -eq 1 && "$blockers_snapshot_found" -eq 1 ]]; then
+        break
+      fi
+    done < "$entries_all_tmp"
 
     # Recent updates
     u=0
@@ -451,7 +465,11 @@ if [[ -s "$next_tmp" ]]; then
     echo "- $n"
   done < "$next_tmp"
 else
-  echo "- (No explicit next actions found in recent log entries.)"
+  if [[ "$next_snapshot_found" -eq 1 ]]; then
+    echo "- (None.)"
+  else
+    echo "- (No explicit next actions found in log entries.)"
+  fi
 fi
 echo
 echo "**Blockers / Risks:**"
@@ -461,7 +479,11 @@ if [[ -s "$blockers_tmp" ]]; then
     echo "- $b"
   done < "$blockers_tmp"
 else
-  echo "- (No explicit blockers or risks found in recent log entries.)"
+  if [[ "$blockers_snapshot_found" -eq 1 ]]; then
+    echo "- (None.)"
+  else
+    echo "- (No explicit blockers or risks found in log entries.)"
+  fi
 fi
 echo
 echo "**Recent Updates:**"
@@ -499,3 +521,7 @@ if [[ "${#missing_files[@]}" -gt 0 ]]; then
     echo "- \`$rel_log\` with entry blocks: Status, Notes, Next, Blockers."
   fi
 fi
+
+}
+
+secret_scan_run_read_main secret_scan_reader_main "$@"

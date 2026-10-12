@@ -1,0 +1,5 @@
+interface:
+  display_name: "Workflow Plan"
+  short_description: "Create an executable plan and recovery steps"
+policy:
+  allow_implicit_invocation: false
