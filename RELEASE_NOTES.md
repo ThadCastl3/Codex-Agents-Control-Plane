@@ -1,5 +1,16 @@
 # Release Notes
 
+## Unreleased
+
+- Snapshot restore validates destinations before mutation and limits rollback
+  to recorded changes, preserving external files behind rejected symlinks.
+- Memory readers search private Git-ignored Markdown and normalize root paths
+  before resolving accepted decision status and supersession.
+- Each SessionStart delivers context, so later compactions restore memory even
+  when the session and memory revision are unchanged.
+- Regression fixtures cover ignored Git repositories, equivalent memory roots,
+  repeated compactions, and rejected or partially completed restores.
+
 ## v0.2.0-alpha.1 (2026-10-12)
 
 Control-plane correctness and runtime integration update.

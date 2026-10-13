@@ -115,7 +115,9 @@ def delivery_key(event, memory):
 
 
 def handle(event, memory, state):
-    if event.get("hook_event_name") not in {"SessionStart", "UserPromptSubmit", "SubagentStart"}:
+    # SessionStart carries no per-occurrence turn ID. A later resume or compact
+    # can have the same payload and memory revision, but needs fresh context.
+    if event.get("hook_event_name") not in {"UserPromptSubmit", "SubagentStart"}:
         return handle_event(event, memory, state)
     key = delivery_key(event, memory)
     # Bounded lock buckets serialize duplicate invocations before retrieval.
@@ -172,16 +174,16 @@ def handle_event(event, memory, state, key=None):
         context = context.encode()[:MAX_CONTEXT_BYTES - 250].decode(errors="ignore")
         context = context.replace("Bootstrap completed for this task.", "")
         context += "\nContext shortened; run task-specific bootstrap manually before recommendations."
-    key = key or delivery_key(event, memory)
-    # Only bookkeeping is persisted, never raw prompts or transcripts.
-    with memory_lock(state, timeout=3):
-        file = state / "delivered.json"
-        delivered = json.loads(file.read_text()) if file.exists() else []
-        if not isinstance(delivered, list) or not all(isinstance(item, str) for item in delivered):
-            raise ValueError("invalid delivery record")
-        if key in delivered:
-            return {}
-        publish_file(file, json.dumps((delivered + [key])[-256:]).encode(), replace=True)
+    if key is not None:
+        # Only bookkeeping is persisted, never raw prompts or transcripts.
+        with memory_lock(state, timeout=3):
+            file = state / "delivered.json"
+            delivered = json.loads(file.read_text()) if file.exists() else []
+            if not isinstance(delivered, list) or not all(isinstance(item, str) for item in delivered):
+                raise ValueError("invalid delivery record")
+            if key in delivered:
+                return {}
+            publish_file(file, json.dumps((delivered + [key])[-256:]).encode(), replace=True)
     return {"hookSpecificOutput": {"hookEventName": name, "additionalContext": context}}
 
 

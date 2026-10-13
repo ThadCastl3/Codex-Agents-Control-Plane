@@ -43,7 +43,35 @@ class SetupHooksSnapshots(unittest.TestCase):
         self.assertEqual(self.hook(self.event("UserPromptSubmit", prompt="Review the project architecture")), {})
         compact = self.hook(self.event("SessionStart", source="compact"))
         self.assertIn("Context", compact["hookSpecificOutput"]["additionalContext"])
-        self.assertEqual(self.hook(self.event("SessionStart", source="compact")), {})
+        self.assertEqual(self.hook(self.event("SessionStart", source="compact")), compact)
+
+    def test_native_compaction_restores_context_after_intervening_turns(self):
+        compact_event = self.event("SessionStart", source="compact")
+        # Native SessionStart payloads have no turn_id, including after compaction.
+        compact_event.pop("turn_id")
+        before = {path: path.read_bytes() for path in self.memory.rglob("*.md")}
+        first = self.hook(compact_event)
+        for turn in ["second-turn", "third-turn"]:
+            prompt_event = self.event("UserPromptSubmit", prompt="Review the project architecture")
+            prompt_event["turn_id"] = turn
+            self.assertIn("hookSpecificOutput", self.hook(prompt_event))
+            restored = self.hook(compact_event)
+            self.assertEqual(restored, first)
+            context = restored["hookSpecificOutput"]["additionalContext"]
+            self.assertIn("Bootstrap completed for compaction restoration", context)
+            self.assertLessEqual(len(context.encode()), 4800)
+        self.assertEqual({path: path.read_bytes() for path in self.memory.rglob("*.md")}, before)
+        self.assertEqual(len(json.loads((self.state / "delivered.json").read_text())), 2)
+
+    def test_session_start_always_delivers_source_of_truth_context(self):
+        for source in ["startup", "resume", "clear"]:
+            with self.subTest(source=source):
+                event = self.event("SessionStart", source=source)
+                event.pop("turn_id")
+                first = self.hook(event)
+                self.assertIn("Structured memory is authoritative", first["hookSpecificOutput"]["additionalContext"])
+                self.assertEqual(self.hook(event), first)
+        self.assertFalse((self.state / "delivered.json").exists())
 
     def test_subagent_and_prompt_privacy(self):
         value = "sk-proj-" + "q" * 32
@@ -54,6 +82,7 @@ class SetupHooksSnapshots(unittest.TestCase):
             self.assertNotIn("Review project", path.read_text())
         child = self.hook(self.event("SubagentStart", agent_id="child", agent_type="worker"))
         self.assertIn("ownership", child["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual(self.hook(self.event("SubagentStart", agent_id="child", agent_type="worker")), {})
 
     def test_patch_guard_add_update_delete_move_and_unrelated(self):
         for operation in ["Add", "Update", "Delete"]:

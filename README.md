@@ -105,11 +105,16 @@ rules, with a verification scan after redaction. Readers sanitize whole source
 documents before excerpts and sanitize complete stdout/stderr before release.
 Missing scanner dependencies withhold output and stop writes.
 
+Memory searches include private Git-ignored Markdown documents. Reader roots
+are normalized so absolute paths, relative paths, and trailing slashes preserve
+the same decision authority and evidence paths.
+
 Only effective records explicitly marked `Status: accepted` are binding.
 Accepted replacements retire their predecessors; proposed replacements do not.
 Missing/ambiguous targets, cycles, and competing accepted replacement branches
 return exit 3. Other invalid inputs or unavailable dependencies return exit 2.
-Bootstrap stays non-aborting and labels unavailable decision context.
+Linked decision sources are rejected before graph resolution. Bootstrap stays
+non-aborting and labels unavailable decision context.
 
 Project `Next` and `Blockers` fields are independent snapshots. The latest
 explicit field wins; `None` or an empty field clears it. Checked tasks are
@@ -134,7 +139,9 @@ The authored hooks are local command handlers:
 The direct-edit guard is defense in depth; it does not inspect every shell or
 hosted-tool write. Writer enforcement remains active when hooks are unavailable.
 The adapter caps context at 4,800 UTF-8 bytes, sanitizes it, and deduplicates
-matching events before retrieval. `additionalContextLimit = 0` avoids a second
+matching prompt and subagent events before retrieval. Every `SessionStart`
+delivers context, including each compaction with unchanged memory.
+`additionalContextLimit = 0` avoids a second
 approximate token-based spill after that strict byte cap. Bookkeeping contains
 hashes/status only and never stores raw prompts or transcripts.
 
@@ -164,7 +171,9 @@ exclude lock/runtime files, reject symlinks and unsafe paths, scan contents,
 verify checksums, and live in mode-700 `.private/snapshots/`. A restore preserves
 the live root and lock inode, captures a pre-restore snapshot, and restores
 Markdown documents under the writer lock. Hidden and non-Markdown files are
-outside this snapshot contract. Low-confidence content may be redacted; a
+outside this snapshot contract. Restore validates destination paths before
+mutation and rolls back only its recorded changes after a failure.
+Low-confidence content may be redacted; a
 high-confidence finding requires an explicit sanitized-copy override.
 
 These are local recovery copies, not encrypted disaster recovery. Copy them to

@@ -321,7 +321,7 @@ candidate_files_for_scope() {
   local scope_name strict_count loose_count pattern
   local strict_tmp loose_tmp
 
-  if [[ ! -d "$scope_dir" ]]; then
+  if [[ ! -d "$scope_dir" || -L "$scope_dir" ]]; then
     return 0
   fi
 
@@ -336,7 +336,7 @@ candidate_files_for_scope() {
       local cmd tok
 
       if [[ "$token_mode" == "strict" ]]; then
-        cmd=(rg -i -l --no-messages -w)
+        cmd=(rg --no-ignore --hidden --no-follow -g '*.md' -i -l --no-messages -w)
         for tok in "${tokens[@]}"; do
           cmd+=( -e "$tok" )
         done
@@ -345,7 +345,7 @@ candidate_files_for_scope() {
         strict_count="$(wc -l < "$strict_tmp" | tr -d ' ')"
 
         if [[ "$strict_count" -eq 0 ]]; then
-          cmd=(rg -i -l --no-messages)
+          cmd=(rg --no-ignore --hidden --no-follow -g '*.md' -i -l --no-messages)
           for tok in "${tokens[@]}"; do
             cmd+=( -e "$tok" )
           done
@@ -357,7 +357,7 @@ candidate_files_for_scope() {
           cat "$strict_tmp"
         fi
       else
-        cmd=(rg -i -l --no-messages)
+        cmd=(rg --no-ignore --hidden --no-follow -g '*.md' -i -l --no-messages)
         for tok in "${tokens[@]}"; do
           cmd+=( -e "$tok" )
         done
@@ -369,17 +369,17 @@ candidate_files_for_scope() {
     else
       pattern="$(IFS='|'; printf '%s' "${tokens[*]}")"
       if [[ "$token_mode" == "strict" ]]; then
-        grep -RilwE -- "$pattern" "$scope_dir" > "$strict_tmp" 2>/dev/null || true
+        find "$scope_dir" -type f -name '*.md' -exec grep -ilwE -- "$pattern" {} + > "$strict_tmp" 2>/dev/null || true
         strict_count="$(wc -l < "$strict_tmp" | tr -d ' ')"
         if [[ "$strict_count" -eq 0 ]]; then
-          grep -RilE -- "$pattern" "$scope_dir" > "$loose_tmp" 2>/dev/null || true
+          find "$scope_dir" -type f -name '*.md' -exec grep -ilE -- "$pattern" {} + > "$loose_tmp" 2>/dev/null || true
           loose_count="$(wc -l < "$loose_tmp" | tr -d ' ')"
           cat "$loose_tmp"
         else
           cat "$strict_tmp"
         fi
       else
-        grep -RilE -- "$pattern" "$scope_dir" > "$loose_tmp" 2>/dev/null || true
+        find "$scope_dir" -type f -name '*.md' -exec grep -ilE -- "$pattern" {} + > "$loose_tmp" 2>/dev/null || true
         loose_count="$(wc -l < "$loose_tmp" | tr -d ' ')"
         cat "$loose_tmp"
       fi
@@ -390,9 +390,9 @@ candidate_files_for_scope() {
   fi
 
   if command -v rg >/dev/null 2>&1; then
-    rg -i -F -l --no-messages -- "$query" "$scope_dir" > "$loose_tmp" 2>/dev/null || true
+    rg --no-ignore --hidden --no-follow -g '*.md' -i -F -l --no-messages -- "$query" "$scope_dir" > "$loose_tmp" 2>/dev/null || true
   else
-    grep -RilF -- "$query" "$scope_dir" > "$loose_tmp" 2>/dev/null || true
+    find "$scope_dir" -type f -name '*.md' -exec grep -ilF -- "$query" {} + > "$loose_tmp" 2>/dev/null || true
   fi
   loose_count="$(wc -l < "$loose_tmp" | tr -d ' ')"
   trace "scope=${scope_name} candidates_word=${strict_count} candidates_nonword=${loose_count}"
@@ -765,6 +765,9 @@ if [[ ! -d "$MEMORY_ROOT" ]]; then
   echo "Error: memory root not found: $MEMORY_ROOT" >&2
   exit 3
 fi
+# Keep graph expansion, authority lookups, and displayed relative paths aligned
+# for absolute, relative, trailing-slash, and root-symlink spellings.
+MEMORY_ROOT="$(cd "$MEMORY_ROOT" && pwd -P)"
 
 scopes_csv="$(printf '%s' "$scopes_csv" | tr -d '[:space:]')"
 IFS=',' read -r -a scopes <<< "$scopes_csv"
@@ -809,6 +812,7 @@ trap 'rm -f "$candidates_file" "$sorted_by_score_file" "$selected_raw_file" "$se
 
 decision_state_script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)/lib/decision_state.py"
 if [[ ",$scopes_display," == *,decisions,* && -d "$MEMORY_ROOT/decisions" ]]; then
+  [[ ! -L "$MEMORY_ROOT/decisions" ]] || die "decisions directory may not be a symbolic link"
   if ! python3 "$decision_state_script" "$MEMORY_ROOT" > "$decision_state_file"; then
     echo "Decision context unavailable: effective decision state could not be resolved."
     exit 2
@@ -836,7 +840,7 @@ for scope in "${scopes[@]}"; do
   fi
 
   while IFS=$'\t' read -r file relevance_file || [[ -n "$file" ]]; do
-    [[ -f "$file" ]] || continue
+    [[ -f "$file" && ! -L "$file" && ! -L "$relevance_file" ]] || continue
 
     file_ts="$(file_epoch "$file")"
     if [[ -n "$since_epoch" && ( "$scope" == "logs" || "$scope" == "projects" ) ]]; then

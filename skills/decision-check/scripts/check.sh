@@ -306,8 +306,13 @@ if [[ -n "$since" ]]; then
 fi
 
 MEMORY_ROOT="$DEFAULT_MEMORY_ROOT"
+[[ -d "$MEMORY_ROOT" ]] || die "memory root not found: $MEMORY_ROOT"
+# Candidate expansion emits absolute paths. Normalize once so equivalent root
+# spellings retain the same relative decision names and authority lookups.
+MEMORY_ROOT="$(cd "$MEMORY_ROOT" && pwd -P)"
 DECISIONS_DIR="$MEMORY_ROOT/decisions"
 [[ -d "$DECISIONS_DIR" ]] || die "decisions directory not found: $DECISIONS_DIR"
+[[ ! -L "$DECISIONS_DIR" ]] || die "decisions directory may not be a symbolic link"
 
 query_lower="$(printf '%s' "$query" | tr '[:upper:]' '[:lower:]')"
 normalized_query="$(printf '%s' "$query_lower" | sed -E 's/[^a-z0-9._ -]+/ /g')"
@@ -363,18 +368,19 @@ while IFS= read -r -d '' f; do
   done
 done < <(find "$DECISIONS_DIR" -type f -name '*.md' -print0 2>/dev/null)
 
-# Content prefilter via rg/grep.
+# Private memory is deliberately Git-ignored. Search Markdown independently of
+# ignore rules, without following file or directory symlinks.
 if [[ -n "$keyword_re" ]]; then
   if command -v rg >/dev/null 2>&1; then
-    rg -i -l -e "$keyword_re" "$DECISIONS_DIR" 2>/dev/null || true
+    rg --no-ignore --hidden --no-follow -g '*.md' -i -l -e "$keyword_re" "$DECISIONS_DIR" 2>/dev/null || true
   else
-    grep -RilE -- "$keyword_re" "$DECISIONS_DIR" 2>/dev/null || true
+    find "$DECISIONS_DIR" -type f -name '*.md' -exec grep -ilE -- "$keyword_re" {} + 2>/dev/null || true
   fi
 else
   if command -v rg >/dev/null 2>&1; then
-    rg -i -F -l -- "$query" "$DECISIONS_DIR" 2>/dev/null || true
+    rg --no-ignore --hidden --no-follow -g '*.md' -i -F -l -- "$query" "$DECISIONS_DIR" 2>/dev/null || true
   else
-    grep -RilF -- "$query" "$DECISIONS_DIR" 2>/dev/null || true
+    find "$DECISIONS_DIR" -type f -name '*.md' -exec grep -ilF -- "$query" {} + 2>/dev/null || true
   fi
 fi >> "$matches_file"
 
@@ -391,7 +397,7 @@ python3 "$decision_state_script" "$MEMORY_ROOT" --state "$decision_state_file" \
   --expand-candidates "$matches_file" > "$sorted_file"
 
 while IFS=$'\t' read -r file relevance_file || [[ -n "$file" ]]; do
-  [[ -f "$file" ]] || continue
+  [[ -f "$file" && ! -L "$file" && ! -L "$relevance_file" ]] || continue
 
   rel_path="${file#"$MEMORY_ROOT"/}"
   title="$(secret_scan_filter_file_read "$file" | grep -m1 -E '^#[[:space:]]+' | sed -E 's/^#[[:space:]]*//' || true)"

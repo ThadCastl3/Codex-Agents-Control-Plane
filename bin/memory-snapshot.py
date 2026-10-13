@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import shutil
+import stat
 import sys
 import uuid
 
@@ -30,19 +31,56 @@ def validate_member(relative):
 def documents(memory, allow_redact=False):
     result = {}
     redacted = 0
-    for path in sorted(memory.rglob("*.md")):
-        if path.is_symlink() or any(parent.is_symlink() for parent in path.parents if parent != memory and parent.is_relative_to(memory)):
-            raise ValueError("snapshot refuses symlinked memory documents")
-        relative = path.relative_to(memory).as_posix()
-        if any(part.startswith(".") for part in PurePosixPath(relative).parts):
-            continue
-        validate_member(relative)
+    paths = []
+
+    def walk_error(error):
+        raise error
+
+    for directory, directories, filenames in os.walk(memory, topdown=True, followlinks=False, onerror=walk_error):
+        directories[:] = sorted(name for name in directories if not name.startswith("."))
+        for name in directories:
+            if (Path(directory) / name).is_symlink():
+                raise ValueError("snapshot refuses symlinked memory directories")
+        for name in sorted(filenames):
+            if name.startswith(".") or not name.endswith(".md"):
+                continue
+            paths.append((Path(directory) / name).relative_to(memory).as_posix())
+    for relative in sorted(paths):
+        path = checked_destination(memory, relative)
         checked = scan_text(path.read_text(), mode="write", allow_redact=allow_redact)
         if checked["status"] == "blocked":
             raise ValueError("snapshot blocked by secret policy; explicit --allow-redact can save a sanitized copy")
         redacted += checked["status"] == "redacted"
         result[relative] = checked["redacted_text"].encode()
     return result, redacted
+
+
+def checked_destination(memory, relative):
+    """Check every existing component without traversing a symlink.
+
+    Call before each mutation, including rollback. The writer lock serializes
+    cooperating changes; this check also refuses an observed external change.
+    """
+    parts = validate_member(relative).parts
+    if memory.is_symlink() or not memory.is_dir():
+        raise ValueError("memory root is missing or symlinked")
+    current = memory
+    for position, component in enumerate(parts):
+        current = current / component
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(mode):
+            raise ValueError("snapshot destination is symlinked")
+        if position < len(parts) - 1:
+            if not stat.S_ISDIR(mode):
+                raise ValueError("snapshot destination parent is not a directory")
+        elif not stat.S_ISREG(mode):
+            raise ValueError("snapshot destination is not a regular file")
+    if not current.resolve().is_relative_to(memory.resolve()):
+        raise ValueError("snapshot destination is outside memory")
+    return current
 
 
 def capture(memory, snapshots, allow_redact=False):
@@ -96,25 +134,38 @@ def load_snapshot(snapshots, name, allow_redact=False):
 
 def restore(memory, snapshots, name, allow_redact=False):
     replacement = load_snapshot(snapshots, name, allow_redact)
+    # Reject invalid destinations before touching any live document.
+    for relative in replacement:
+        checked_destination(memory, relative)
     # Capture recovery before mutation; refusing unsafe existing content leaves it intact.
     recovery, previous, _ = capture(memory, snapshots, allow_redact)
     existing = set(previous)
+    changed = []
     try:
         for relative, data in replacement.items():
-            destination = memory / relative
-            if any(parent.is_symlink() for parent in destination.parents if parent.is_relative_to(memory)):
-                raise ValueError("restore destination is symlinked")
+            destination = checked_destination(memory, relative)
             destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            checked_destination(memory, relative)
             publish_file(destination, data, replace=destination.exists())
-        for relative in existing - set(replacement):
-            (memory / relative).unlink()
-    except BaseException:
-        for relative, data in previous.items():
-            publish_file(memory / relative, data, replace=(memory / relative).exists())
-        for relative in set(replacement) - existing:
-            destination = memory / relative
-            if destination.exists():
-                destination.unlink()
+            changed.append(relative)
+        for relative in sorted(existing - set(replacement)):
+            checked_destination(memory, relative).unlink()
+            changed.append(relative)
+    except BaseException as original_error:
+        rollback_failed = False
+        # Undo only successful mutations. Never unlink an unattempted path, and
+        # recheck containment in case a parent changed after the initial scan.
+        for relative in reversed(changed):
+            try:
+                destination = checked_destination(memory, relative)
+                if relative in previous:
+                    publish_file(destination, previous[relative], replace=destination.exists())
+                elif destination.exists():
+                    destination.unlink()
+            except (OSError, ValueError):
+                rollback_failed = True
+        if rollback_failed:
+            raise ValueError(f"restore failed and rollback was incomplete; recovery snapshot: {recovery}") from original_error
         raise
     return recovery, len(replacement)
 

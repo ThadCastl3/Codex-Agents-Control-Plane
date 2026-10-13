@@ -1,0 +1,99 @@
+{
+  "verified_at": "2026-10-13T01:29:45.228548+00:00",
+  "status": "passed",
+  "base_commits": [
+    "be1f47e",
+    "ace5c74"
+  ],
+  "fixes": [
+    {
+      "finding": "P1 snapshot rollback containment",
+      "result": "Preflight validates every destination; capture rejects visible linked directories; rollback journals successful mutations and rechecks paths before safe undo. Incomplete rollback identifies the recovery snapshot.",
+      "tests": "Six snapshot regressions cover external-file preservation, preflight refusal, write/deletion failures, rollback containment, recovery round trip, and stable lock inode.",
+      "baseline": "Initial five snapshot regressions failed before the fix."
+    },
+    {
+      "finding": "P1 ignored-memory retrieval",
+      "result": "Both readers search Git-ignored Markdown explicitly, without following links; grep fallback uses regular-file enumeration. Decision resolution rejects linked policy trees before reading their metadata.",
+      "tests": "Git-backed fixtures cover content-only accepted policy, knowledge, patterns, bootstrap, supersession, grep fallback, and symlink boundaries."
+    },
+    {
+      "finding": "P2 compaction restoration",
+      "result": "Every SessionStart emits context; prompt and subagent duplicate suppression remains. Hook definitions and Stop behavior are unchanged.",
+      "tests": "Native-shaped repeated compactions without turn_id, intervening turns, unchanged memory, bounded context, and startup/resume/clear delivery.",
+      "baseline": "Three hook test methods failed before the fix; all fifteen focused methods passed afterward."
+    },
+    {
+      "finding": "P2 memory-root normalization",
+      "result": "Both readers canonicalize MEMORY_ROOT before candidate expansion and authority lookups.",
+      "tests": "Absolute, trailing-slash, relative, dot-relative, and root-symlink aliases preserve accepted authority and evidence paths; supersession is tested with ignored memory."
+    }
+  ],
+  "regressions": {
+    "new_test_methods": 16,
+    "memory_path_tests": 8,
+    "snapshot_recovery_tests": 6,
+    "additional_hook_tests": 2,
+    "reader_baseline": "Original five methods produced nine failing assertions/subtests; linked replacement regression failed for both readers and bootstrap before the graph correction."
+  },
+  "verification": {
+    "command": "env PYTHONPATH=/Users/axios/.cache/uv/archive-v0/4Xq0nrM-5CAZa8-zz41ty bin/verify.sh",
+    "tests_passed": 89,
+    "seconds": 77.954,
+    "doctor": {
+      "PASS": 121,
+      "WARN": 2
+    },
+    "syntax": "Bash and Python checks passed",
+    "whitespace": "git diff --check passed",
+    "independent_review": "Final review found no remaining actionable issue in the fixes."
+  },
+  "native_discovery": {
+    "local_skills_once_each": 14,
+    "skill_errors": 0,
+    "hooks": [
+      {
+        "event": "preToolUse",
+        "enabled": true,
+        "trust": "trusted"
+      },
+      {
+        "event": "sessionStart",
+        "enabled": true,
+        "trust": "trusted"
+      },
+      {
+        "event": "userPromptSubmit",
+        "enabled": true,
+        "trust": "trusted"
+      },
+      {
+        "event": "subagentStart",
+        "enabled": true,
+        "trust": "trusted"
+      },
+      {
+        "event": "stop",
+        "enabled": true,
+        "trust": "trusted"
+      }
+    ],
+    "hook_errors": 0,
+    "hook_warnings": 0
+  },
+  "scope_guards": {
+    "bundled_files_unchanged": 58,
+    "memory_index_bytes_unchanged": true,
+    "memory_index_excluded_from_commit": true,
+    "hook_definitions_unchanged": true,
+    "no_trust_changes_or_bypass": true,
+    "behavioral_fixtures_disposable": true
+  },
+  "limitations": [
+    "Verification uses existing cached PyYAML 6.0.2 without installing packages; default Python lacks this optional bundled-helper dependency.",
+    "Repeated compaction is verified with documented native-shaped fixtures; this turn did not force a live model compaction. Prior live Stop evidence remains in its dedicated report.",
+    "Snapshots serialize cooperating writers; external noncooperating changes can prevent complete rollback, which now reports failure and the recovery snapshot.",
+    "Previously documented imported Image CLI output-collision issue is outside these four control-plane fixes."
+  ],
+  "official_reference": "https://learn.chatgpt.com/docs/hooks#sessionstart"
+}

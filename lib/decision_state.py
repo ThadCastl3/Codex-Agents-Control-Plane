@@ -42,10 +42,17 @@ def resolve_decisions(memory_root):
     decisions_dir = root / "decisions"
     if not decisions_dir.is_dir():
         raise ValueError("decisions directory is unavailable")
+    if decisions_dir.is_symlink():
+        raise ValueError("decisions directory may not be a symbolic link")
     decisions = {}
     aliases = defaultdict(set)
-    for filename in sorted(decisions_dir.rglob("*.md")):
-        if not filename.is_file():
+    for filename in sorted(decisions_dir.rglob("*")):
+        # A linked replacement must not suppress a real accepted decision and
+        # then disappear during candidate filtering. Reject an incomplete or
+        # externally sourced policy graph before reading linked metadata.
+        if filename.is_symlink():
+            raise ValueError("decision tree may not contain symbolic links")
+        if filename.suffix != ".md" or not filename.is_file():
             continue
         relative = filename.relative_to(root).as_posix()
         if any(character in relative for character in "\t\r\n"):
