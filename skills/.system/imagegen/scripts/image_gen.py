@@ -19,7 +19,8 @@ from pathlib import Path
 import re
 import sys
 import time
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+import unicodedata
+from typing import Any, Iterable, Optional, Tuple
 
 from io import BytesIO
 
@@ -91,8 +92,8 @@ def _read_prompt(prompt: Optional[str], prompt_file: Optional[str]) -> str:
     return ""  # unreachable
 
 
-def _check_image_paths(paths: Iterable[str]) -> List[Path]:
-    resolved: List[Path] = []
+def _check_image_paths(paths: Iterable[str]) -> list[Path]:
+    resolved: list[Path] = []
     for raw in paths:
         path = Path(raw)
         if not path.exists():
@@ -203,7 +204,7 @@ def _validate_model_specific_options(
         )
 
 
-def _validate_generate_payload(payload: Dict[str, Any]) -> None:
+def _validate_generate_payload(payload: dict[str, Any]) -> None:
     model = str(payload.get("model", DEFAULT_MODEL))
     _validate_model(model)
     n = int(payload.get("n", 1))
@@ -226,7 +227,7 @@ def _build_output_paths(
     output_format: str,
     count: int,
     out_dir: Optional[str],
-) -> List[Path]:
+) -> list[Path]:
     ext = "." + output_format
 
     if out_dir:
@@ -259,12 +260,12 @@ def _augment_prompt(args: argparse.Namespace, prompt: str) -> str:
 
 
 def _augment_prompt_fields(
-    augment: bool, prompt: str, fields: Dict[str, Optional[str]]
+    augment: bool, prompt: str, fields: dict[str, Optional[str]]
 ) -> str:
     if not augment:
         return prompt
 
-    sections: List[str] = []
+    sections: list[str] = []
     if fields.get("use_case"):
         sections.append(f"Use case: {fields['use_case']}")
     sections.append(f"Primary request: {prompt}")
@@ -292,7 +293,7 @@ def _augment_prompt_fields(
     return "\n".join(sections)
 
 
-def _fields_from_args(args: argparse.Namespace) -> Dict[str, Optional[str]]:
+def _fields_from_args(args: argparse.Namespace) -> dict[str, Optional[str]]:
     return {
         "use_case": getattr(args, "use_case", None),
         "scene": getattr(args, "scene", None),
@@ -312,7 +313,7 @@ def _print_request(payload: dict) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def _decode_and_write(images: List[str], outputs: List[Path], force: bool) -> None:
+def _decode_and_write(images: list[str], outputs: list[Path], force: bool) -> None:
     _preflight_output_paths(outputs, force=force)
     _write_image_files(
         [(path, base64.b64decode(encoded)) for encoded, path in zip(images, outputs)],
@@ -327,23 +328,25 @@ def _derive_downscale_path(path: Path, suffix: str) -> Path:
 
 
 def _planned_output_paths(
-    outputs: List[Path], downscale_max_dim: Optional[int], downscale_suffix: str
-) -> List[Path]:
+    outputs: list[Path], downscale_max_dim: Optional[int], downscale_suffix: str
+) -> list[Path]:
     paths = list(outputs)
     if downscale_max_dim is not None:
         paths.extend(_derive_downscale_path(path, downscale_suffix) for path in outputs)
     return paths
 
 
-def _preflight_output_paths(paths: List[Path], *, force: bool) -> None:
+def _preflight_output_paths(paths: list[Path], *, force: bool) -> None:
     """Validate a complete output plan without creating files or directories."""
     resolved = set()
     inodes = set()
     for path in paths:
         canonical = path.resolve()
-        # Reject case-only aliases on every platform so a plan cannot overwrite
-        # its own images when moved to a case-insensitive output filesystem.
-        key = str(canonical).casefold()
+        # Reject case and Unicode normalization aliases on every platform.
+        # Normalize around casefolding, which can produce non-normalized text.
+        key = unicodedata.normalize(
+            "NFD", unicodedata.normalize("NFD", str(canonical)).casefold()
+        )
         if key in resolved:
             _die(f"Output paths collide: {path}")
         resolved.add(key)
@@ -362,7 +365,7 @@ def _preflight_output_paths(paths: List[Path], *, force: bool) -> None:
                 _die(f"Output parent is not a directory: {parent}")
 
 
-def _write_image_files(files: List[Tuple[Path, bytes]], *, force: bool) -> None:
+def _write_image_files(files: list[Tuple[Path, bytes]], *, force: bool) -> None:
     """Reserve the whole write set before bytes are written without --force."""
     with ExitStack() as stack:
         reserved = []
@@ -439,8 +442,8 @@ def _downscale_image_bytes(
 
 
 def _decode_write_and_downscale(
-    images: List[str],
-    outputs: List[Path],
+    images: list[str],
+    outputs: list[Path],
     *,
     force: bool,
     downscale_max_dim: Optional[int],
@@ -500,7 +503,7 @@ def _slugify(value: str) -> str:
     return value[:60] if value else "job"
 
 
-def _normalize_job(job: Any, idx: int) -> Dict[str, Any]:
+def _normalize_job(job: Any, idx: int) -> dict[str, Any]:
     if isinstance(job, str):
         prompt = job.strip()
         if not prompt:
@@ -514,11 +517,11 @@ def _normalize_job(job: Any, idx: int) -> Dict[str, Any]:
     return {}  # unreachable
 
 
-def _read_jobs_jsonl(path: str) -> List[Dict[str, Any]]:
+def _read_jobs_jsonl(path: str) -> list[dict[str, Any]]:
     p = Path(path)
     if not p.exists():
         _die(f"Input file not found: {p}")
-    jobs: List[Dict[str, Any]] = []
+    jobs: list[dict[str, Any]] = []
     for line_no, raw in enumerate(p.read_text(encoding="utf-8").splitlines(), start=1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -539,7 +542,7 @@ def _read_jobs_jsonl(path: str) -> List[Dict[str, Any]]:
     return jobs
 
 
-def _merge_non_null(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+def _merge_non_null(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
     merged = dict(dst)
     for k, v in src.items():
         if v is not None:
@@ -555,7 +558,7 @@ def _job_output_paths(
     prompt: str,
     n: int,
     explicit_out: Optional[str],
-) -> List[Path]:
+) -> list[Path]:
     ext = "." + output_format
 
     if explicit_out:
@@ -612,7 +615,7 @@ def _is_transient_error(exc: Exception) -> bool:
 
 async def _generate_one_with_retries(
     client: Any,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     *,
     attempts: int,
     job_label: str,
@@ -709,7 +712,7 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
     any_failed = False
 
     async def run_job(
-        i: int, payload: Dict[str, Any], outputs: List[Path], effective_output_format: str
+        i: int, payload: dict[str, Any], outputs: list[Path], effective_output_format: str
     ) -> Tuple[int, Optional[str]]:
         nonlocal any_failed
         job_label = f"[job {i}/{len(jobs)}]"
@@ -912,7 +915,7 @@ def _edit(args: argparse.Namespace) -> None:
     )
 
 
-def _open_files(paths: List[Path]):
+def _open_files(paths: list[Path]):
     return _FileBundle(paths)
 
 
@@ -949,9 +952,9 @@ class _SingleFile:
 
 
 class _FileBundle:
-    def __init__(self, paths: List[Path]):
+    def __init__(self, paths: list[Path]):
         self._paths = paths
-        self._handles: List[object] = []
+        self._handles: list[object] = []
 
     def __enter__(self):
         self._handles = [p.open("rb") for p in self._paths]

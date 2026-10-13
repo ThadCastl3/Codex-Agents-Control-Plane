@@ -166,6 +166,50 @@ class ImageCliOutputs(unittest.TestCase):
                 )
                 self.assert_preflight_refusal(args)
 
+    def test_unicode_normalization_batch_aliases_are_rejected_even_with_force(self):
+        for force in (False, True):
+            with self.subTest(force=force):
+                args = self.batch_arguments(
+                    [{"prompt": "First", "out": "\u00e9.png"},
+                     {"prompt": "Second", "out": "e\u0301.png"}],
+                    self.root / f"unicode-alias-{force}", *(["--force"] if force else []),
+                )
+                # Both paths are absent: reject the planned alias on every
+                # platform before requesting images or creating output files.
+                self.assert_preflight_refusal(args)
+
+    def test_unicode_parent_directory_aliases_are_rejected_even_with_force(self):
+        # The CLI flattens per-job names into one output directory. Exercise the
+        # shared validator directly to require normalization of the whole path.
+        paths = [self.root / "\u00e9" / "image.png", self.root / "e\u0301" / "image.png"]
+        before = self.tree()
+        for force in (False, True):
+            with self.subTest(force=force):
+                with redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as raised:
+                        image_cli._preflight_output_paths(paths, force=force)
+                self.assertNotEqual(raised.exception.code, 0)
+                self.assertEqual(self.tree(), before)
+                self.sync_factory.assert_not_called()
+                self.async_factory.assert_not_called()
+
+    def test_distinct_unicode_batch_outputs_remain_successful(self):
+        _, asynchronous = self.mock_clients()
+        for force in (False, True):
+            with self.subTest(force=force):
+                folder = self.root / f"unicode-distinct-{force}"
+                names = ("\u00e9.png", "\u00e8.png")
+                args = self.batch_arguments(
+                    [{"prompt": "First", "out": names[0]}, {"prompt": "Second", "out": names[1]}],
+                    folder, *(["--force"] if force else []),
+                )
+                self.assertEqual(self.invoke(args)[0], 0)
+                self.assertEqual(len(list(folder.iterdir())), 2)
+                for name in names:
+                    self.assertEqual((folder / name).read_bytes(), IMAGE_BYTES)
+        self.assertEqual(asynchronous.images.generate.await_count, 4)
+        self.sync_factory.assert_not_called()
+
     def test_empty_downscale_suffix_cannot_overwrite_primary(self):
         for mode in ("generate", "edit", "generate-batch"):
             with self.subTest(mode=mode):

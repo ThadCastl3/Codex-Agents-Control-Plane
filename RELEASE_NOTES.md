@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Image CLI collision checks normalize Unicode-equivalent paths before API
+  requests, including with `--force`; annotations now use native `dict` and `list`.
+
 - The bundled Image CLI checks complete output plans before API requests and
   reserves response files before non-force writes; offline regressions cover
   generation, editing, batch collisions, aliases, and late filesystem races.

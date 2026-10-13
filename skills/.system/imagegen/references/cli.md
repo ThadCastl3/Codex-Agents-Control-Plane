@@ -178,9 +178,9 @@ Mask notes:
 - Before creating an API client, generation and editing check every primary and
   downscaled destination. Batch generation checks the complete batch first.
 - Reruns fail if a target already exists unless you pass `--force`. Duplicate
-  destinations, including case-only names, resolved aliases, and existing
-  hardlinks, are rejected even with `--force`; each planned image needs its own
-  destination. An empty downscale suffix therefore fails validation.
+  destinations, including case-only names, Unicode-equivalent spellings, resolved
+  aliases, and existing hardlinks, are rejected even with `--force`; each planned
+  image needs its own destination. An empty downscale suffix therefore fails validation.
 - Outputs are checked again after the response. Without `--force`, the writer
   reserves all files for that response exclusively before writing image bytes,
   so an intervening collision does not leave a newly written primary image.

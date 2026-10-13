@@ -1,0 +1,63 @@
+{
+  "verified_at": "2026-10-13T19:26:06.803028+00:00",
+  "status": "passed in isolated checkout",
+  "base_commit": "de1a1bc",
+  "branch": "codex/image-cli-unicode",
+  "resolves": {
+    "finding": "Unicode-equivalent planned image output paths evade collision preflight",
+    "priority": 2
+  },
+  "authorization": {
+    "testing": "Offline mocked tests without credentials or live Image API calls.",
+    "checkout": "Preserve all pre-existing bundled changes; implement and verify in an isolated checkout.",
+    "publish": "Push the verified code after checks pass."
+  },
+  "implementation": [
+    "Compare resolved paths with NFD(NFD(path).casefold()) so Unicode-equivalent names and parent directories are rejected before client creation, including with --force.",
+    "Keep original destination spellings for actual output files and allow distinct Unicode filenames.",
+    "Use native dict and list annotations throughout the Image CLI and remove the corresponding typing imports.",
+    "Update CLI collision documentation and the two associated vendor manifest hashes."
+  ],
+  "normalization_reference": "https://docs.python.org/3/howto/unicode.html#comparing-strings",
+  "regression_tests": {
+    "path": "tests/test_image_cli_outputs.py",
+    "new_methods": 3,
+    "total_image_cli_methods": 23,
+    "baseline_new_methods_run": 3,
+    "baseline_failing_methods": 2,
+    "baseline_subtest_failures": 4,
+    "candidate_passed": 23,
+    "candidate_seconds": 0.075,
+    "cases": [
+      "composed/decomposed batch basename aliases without and with --force",
+      "Unicode-equivalent parent directories without and with --force",
+      "successful distinct accented batch filenames without and with --force"
+    ],
+    "refusal_contract": "No SDK client construction, API request, output write, or directory creation."
+  },
+  "verification": {
+    "suite_command": "env PYTHONPATH=<existing cached PyYAML directory> bin/verify.sh --skip-doctor",
+    "tests_passed": 112,
+    "seconds": 83.096,
+    "doctor_command": "bin/doctor.sh --repo-root <isolated checkout> --codex-home <disposable fixture> --agents-home <disposable fixture> --memory-root <isolated checkout>/memory",
+    "doctor_passes": 121,
+    "doctor_warnings": 2,
+    "doctor_explanation": "Setup checks ran separately against disposable installation paths to avoid repointing the active Codex installation. No hooks were trusted or reinstalled into live configuration.",
+    "syntax": "Bash/Python passed; Dict/List no longer occur in Image CLI.",
+    "whitespace": "git diff --check passed.",
+    "independent_review": "No actionable findings in source, regression tests, documentation, or manifest.",
+    "vendor_hashes_verified": 58
+  },
+  "preservation": {
+    "primary_checkout": "All six pre-existing tracked modifications and their complete diff remain byte-for-byte unchanged.",
+    "memory_index": "Unchanged, unstaged, and excluded from this commit.",
+    "bundled_changes": "Preserved in primary checkout; not restored or included in this fix.",
+    "live_installation": "Still uses primary checkout; isolated branch does not replace it."
+  },
+  "limitations": [
+    "Image API clients and image processing are mocked; live service behavior and actual Pillow transformations are not covered.",
+    "Canonical Unicode and case aliases are conservatively rejected on every platform.",
+    "Existing post-dispatch filesystem race and non-transactional forced-write limitations remain unchanged.",
+    "Vendor upstream revision is unknown; static doctor cannot establish native hook trust. Hook definitions are unchanged."
+  ]
+}
