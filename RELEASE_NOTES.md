@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- The bundled Image CLI checks complete output plans before API requests and
+  reserves response files before non-force writes; offline regressions cover
+  generation, editing, batch collisions, aliases, and late filesystem races.
 - Snapshot restore validates destinations before mutation and limits rollback
   to recorded changes, preserving external files behind rejected symlinks.
 - Memory readers search private Git-ignored Markdown and normalize root paths

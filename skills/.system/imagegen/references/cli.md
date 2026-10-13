@@ -175,7 +175,19 @@ Mask notes:
 ## Output handling
 - Use `tmp/imagegen/` for temporary JSONL inputs or scratch files.
 - Use `output/imagegen/` for final outputs.
-- Reruns fail if a target file already exists unless you pass `--force`.
+- Before creating an API client, generation and editing check every primary and
+  downscaled destination. Batch generation checks the complete batch first.
+- Reruns fail if a target already exists unless you pass `--force`. Duplicate
+  destinations, including case-only names, resolved aliases, and existing
+  hardlinks, are rejected even with `--force`; each planned image needs its own
+  destination. An empty downscale suffix therefore fails validation.
+- Outputs are checked again after the response. Without `--force`, the writer
+  reserves all files for that response exclusively before writing image bytes,
+  so an intervening collision does not leave a newly written primary image.
+  Filesystem changes after request dispatch can still incur API work; batch and
+  forced writes are not transactional across jobs or arbitrary I/O failures.
+- `--dry-run` previews requests and output paths without creating directories,
+  writing images, or checking whether outputs already exist.
 - `--out-dir` changes one-off naming to `image_1.<ext>`, `image_2.<ext>`, and so on.
 - Downscaled copies use the default suffix `-web` unless you override it.
 

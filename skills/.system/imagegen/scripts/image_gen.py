@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import base64
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -230,12 +231,10 @@ def _build_output_paths(
 
     if out_dir:
         out_base = Path(out_dir)
-        out_base.mkdir(parents=True, exist_ok=True)
         return [out_base / f"image_{i}{ext}" for i in range(1, count + 1)]
 
     out_path = Path(out)
     if out_path.exists() and out_path.is_dir():
-        out_path.mkdir(parents=True, exist_ok=True)
         return [out_path / f"image_{i}{ext}" for i in range(1, count + 1)]
 
     if out_path.suffix == "":
@@ -314,21 +313,87 @@ def _print_request(payload: dict) -> None:
 
 
 def _decode_and_write(images: List[str], outputs: List[Path], force: bool) -> None:
-    for idx, image_b64 in enumerate(images):
-        if idx >= len(outputs):
-            break
-        out_path = outputs[idx]
-        if out_path.exists() and not force:
-            _die(f"Output already exists: {out_path} (use --force to overwrite)")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(base64.b64decode(image_b64))
-        print(f"Wrote {out_path}")
+    _preflight_output_paths(outputs, force=force)
+    _write_image_files(
+        [(path, base64.b64decode(encoded)) for encoded, path in zip(images, outputs)],
+        force=force,
+    )
 
 
 def _derive_downscale_path(path: Path, suffix: str) -> Path:
     if suffix and not suffix.startswith("-") and not suffix.startswith("_"):
         suffix = "-" + suffix
     return path.with_name(f"{path.stem}{suffix}{path.suffix}")
+
+
+def _planned_output_paths(
+    outputs: List[Path], downscale_max_dim: Optional[int], downscale_suffix: str
+) -> List[Path]:
+    paths = list(outputs)
+    if downscale_max_dim is not None:
+        paths.extend(_derive_downscale_path(path, downscale_suffix) for path in outputs)
+    return paths
+
+
+def _preflight_output_paths(paths: List[Path], *, force: bool) -> None:
+    """Validate a complete output plan without creating files or directories."""
+    resolved = set()
+    inodes = set()
+    for path in paths:
+        canonical = path.resolve()
+        # Reject case-only aliases on every platform so a plan cannot overwrite
+        # its own images when moved to a case-insensitive output filesystem.
+        key = str(canonical).casefold()
+        if key in resolved:
+            _die(f"Output paths collide: {path}")
+        resolved.add(key)
+        if path.exists() or path.is_symlink():
+            if not force:
+                _die(f"Output already exists: {path} (use --force to overwrite)")
+            if not path.is_file():
+                _die(f"Output is not a regular file: {path}")
+            info = path.stat()
+            inode = (info.st_dev, info.st_ino)
+            if inode in inodes:
+                _die(f"Output paths refer to the same file: {path}")
+            inodes.add(inode)
+        for parent in path.parents:
+            if (parent.exists() or parent.is_symlink()) and not parent.is_dir():
+                _die(f"Output parent is not a directory: {parent}")
+
+
+def _write_image_files(files: List[Tuple[Path, bytes]], *, force: bool) -> None:
+    """Reserve the whole write set before bytes are written without --force."""
+    with ExitStack() as stack:
+        reserved = []
+        try:
+            for path, _ in files:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if not force:
+                    stream = stack.enter_context(path.open("xb"))
+                    info = os.fstat(stream.fileno())
+                    reserved.append((path, stream, info.st_dev, info.st_ino))
+        except BaseException as error:
+            stack.close()
+            # A collision during reservation must not leave an empty primary.
+            # Check identity and size before removing an owned empty reservation.
+            # This does not lock out concurrent directory or path replacement.
+            for path, _, device, inode in reversed(reserved):
+                try:
+                    info = path.lstat()
+                    if (info.st_dev, info.st_ino, info.st_size) == (device, inode, 0):
+                        path.unlink()
+                except FileNotFoundError:
+                    pass
+            if isinstance(error, FileExistsError):
+                _die("Output appeared during writing; no image bytes were written (use --force to overwrite)")
+            raise
+        for index, (path, data) in enumerate(files):
+            if force:
+                path.write_bytes(data)
+            else:
+                reserved[index][1].write(data)
+            print(f"Wrote {path}")
 
 
 def _downscale_image_bytes(
@@ -382,30 +447,23 @@ def _decode_write_and_downscale(
     downscale_suffix: str,
     output_format: str,
 ) -> None:
-    for idx, image_b64 in enumerate(images):
-        if idx >= len(outputs):
-            break
-        out_path = outputs[idx]
-        if out_path.exists() and not force:
-            _die(f"Output already exists: {out_path} (use --force to overwrite)")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-
+    _preflight_output_paths(
+        _planned_output_paths(outputs, downscale_max_dim, downscale_suffix), force=force
+    )
+    files = []
+    for image_b64, out_path in zip(images, outputs):
         raw = base64.b64decode(image_b64)
-        out_path.write_bytes(raw)
-        print(f"Wrote {out_path}")
+        files.append((out_path, raw))
 
         if downscale_max_dim is None:
             continue
 
         derived = _derive_downscale_path(out_path, downscale_suffix)
-        if derived.exists() and not force:
-            _die(f"Output already exists: {derived} (use --force to overwrite)")
-        derived.parent.mkdir(parents=True, exist_ok=True)
         resized = _downscale_image_bytes(
             raw, max_dim=downscale_max_dim, output_format=output_format
         )
-        derived.write_bytes(resized)
-        print(f"Wrote {derived}")
+        files.append((derived, resized))
+    _write_image_files(files, force=force)
 
 
 def _create_client():
@@ -498,7 +556,6 @@ def _job_output_paths(
     n: int,
     explicit_out: Optional[str],
 ) -> List[Path]:
-    out_dir.mkdir(parents=True, exist_ok=True)
     ext = "." + output_format
 
     if explicit_out:
@@ -597,68 +654,12 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
         "moderation": args.moderation,
     }
 
-    if args.dry_run:
-        for i, job in enumerate(jobs, start=1):
-            prompt = str(job["prompt"]).strip()
-            fields = _merge_non_null(base_fields, job.get("fields", {}))
-            # Allow flat job keys as well (use_case, scene, etc.)
-            fields = _merge_non_null(
-                fields, {k: job.get(k) for k in base_fields.keys()}
-            )
-            augmented = _augment_prompt_fields(args.augment, prompt, fields)
-
-            job_payload = dict(base_payload)
-            job_payload["prompt"] = augmented
-            job_payload = _merge_non_null(
-                job_payload, {k: job.get(k) for k in base_payload.keys()}
-            )
-            job_payload = {k: v for k, v in job_payload.items() if v is not None}
-
-            _validate_generate_payload(job_payload)
-            effective_output_format = _normalize_output_format(
-                job_payload.get("output_format")
-            )
-            _validate_transparency(
-                job_payload.get("background"), effective_output_format
-            )
-            job_payload["output_format"] = effective_output_format
-
-            n = int(job_payload.get("n", 1))
-            outputs = _job_output_paths(
-                out_dir=out_dir,
-                output_format=effective_output_format,
-                idx=i,
-                prompt=prompt,
-                n=n,
-                explicit_out=job.get("out"),
-            )
-            downscaled = None
-            if args.downscale_max_dim is not None:
-                downscaled = [
-                    str(_derive_downscale_path(p, args.downscale_suffix))
-                    for p in outputs
-                ]
-            _print_request(
-                {
-                    "endpoint": "/v1/images/generations",
-                    "job": i,
-                    "outputs": [str(p) for p in outputs],
-                    "outputs_downscaled": downscaled,
-                    **job_payload,
-                }
-            )
-        return 0
-
-    client = _create_async_client()
-    sem = asyncio.Semaphore(args.concurrency)
-
-    any_failed = False
-
-    async def run_job(i: int, job: Dict[str, Any]) -> Tuple[int, Optional[str]]:
-        nonlocal any_failed
+    # Plan every job before creating a client or starting concurrent requests.
+    # This also detects collisions between different jobs and derived outputs.
+    planned_jobs = []
+    all_outputs = []
+    for i, job in enumerate(jobs, start=1):
         prompt = str(job["prompt"]).strip()
-        job_label = f"[job {i}/{len(jobs)}]"
-
         fields = _merge_non_null(base_fields, job.get("fields", {}))
         fields = _merge_non_null(fields, {k: job.get(k) for k in base_fields.keys()})
         augmented = _augment_prompt_fields(args.augment, prompt, fields)
@@ -681,6 +682,37 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
             n=n,
             explicit_out=job.get("out"),
         )
+        planned_jobs.append((i, payload, outputs, effective_output_format))
+        all_outputs.extend(
+            _planned_output_paths(outputs, args.downscale_max_dim, args.downscale_suffix)
+        )
+
+    if args.dry_run:
+        for i, payload, outputs, _ in planned_jobs:
+            downscaled = None
+            if args.downscale_max_dim is not None:
+                downscaled = [str(_derive_downscale_path(p, args.downscale_suffix)) for p in outputs]
+            _print_request(
+                {
+                    "endpoint": "/v1/images/generations",
+                    "job": i,
+                    "outputs": [str(p) for p in outputs],
+                    "outputs_downscaled": downscaled,
+                    **payload,
+                }
+            )
+        return 0
+
+    _preflight_output_paths(all_outputs, force=args.force)
+    client = _create_async_client()
+    sem = asyncio.Semaphore(args.concurrency)
+    any_failed = False
+
+    async def run_job(
+        i: int, payload: Dict[str, Any], outputs: List[Path], effective_output_format: str
+    ) -> Tuple[int, Optional[str]]:
+        nonlocal any_failed
+        job_label = f"[job {i}/{len(jobs)}]"
         try:
             async with sem:
                 print(f"{job_label} starting", file=sys.stderr)
@@ -703,16 +735,16 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
                 output_format=effective_output_format,
             )
             return i, None
-        except Exception as exc:
+        except (Exception, SystemExit) as exc:
             any_failed = True
             print(f"{job_label} failed: {exc}", file=sys.stderr)
             if args.fail_fast:
+                if isinstance(exc, SystemExit):
+                    raise RuntimeError(f"{job_label} output validation failed") from exc
                 raise
             return i, str(exc)
 
-    tasks = [
-        asyncio.create_task(run_job(i, job)) for i, job in enumerate(jobs, start=1)
-    ]
+    tasks = [asyncio.create_task(run_job(*job)) for job in planned_jobs]
 
     try:
         await asyncio.gather(*tasks)
@@ -720,6 +752,7 @@ async def _run_generate_batch(args: argparse.Namespace) -> int:
         for t in tasks:
             if not t.done():
                 t.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         raise
 
     return 1 if any_failed else 0
@@ -769,6 +802,10 @@ def _generate(args: argparse.Namespace) -> None:
         )
         return
 
+    _preflight_output_paths(
+        _planned_output_paths(output_paths, args.downscale_max_dim, args.downscale_suffix),
+        force=args.force,
+    )
     print(
         "Calling Image API (generation). This can take up to a couple of minutes.",
         file=sys.stderr,
@@ -844,6 +881,10 @@ def _edit(args: argparse.Namespace) -> None:
         )
         return
 
+    _preflight_output_paths(
+        _planned_output_paths(output_paths, args.downscale_max_dim, args.downscale_suffix),
+        force=args.force,
+    )
     print(
         f"Calling Image API (edit) with {len(image_paths)} image(s).",
         file=sys.stderr,

@@ -9,12 +9,12 @@
     "skills/.system/imagegen/agents/openai.yaml": "9ca574af14580dc7a2a3dc37a1796d17f93cb8850be66501f0799ef8603e9dc0",
     "skills/.system/imagegen/assets/imagegen-small.svg": "cff5f34f57ff60b3ee92eaedd17b15e96dd4b9e776df3e78936c9e00d42be294",
     "skills/.system/imagegen/assets/imagegen.png": "95952f644064eb9e890f98d8db07216347186526e4c41ad66d3420629eb86e20",
-    "skills/.system/imagegen/references/cli.md": "ecfc2e09261a0feb3482517a5fa0ff410cb7d1958e3cbd2ac6b61586f5b81405",
+    "skills/.system/imagegen/references/cli.md": "28216873e77ed0468e4a0a9b81817097240056594126267a25339cfe9217bacf",
     "skills/.system/imagegen/references/codex-network.md": "c88298ca4481f6116a16fa7987434fc977f8b311c1bbc0c3d862ffd0c5981148",
     "skills/.system/imagegen/references/image-api.md": "e56227a742950c384eff5bf9fb8784b228c1f1adca0937c566f16404958ffc6a",
     "skills/.system/imagegen/references/prompting.md": "b210b051c775860267080941eba968212bf0ac7fce581d75c5dcc217d8293f8b",
     "skills/.system/imagegen/references/sample-prompts.md": "70474177d151855b175c6133de2aae1d90b7f146b0dab50ec830972c47d72183",
-    "skills/.system/imagegen/scripts/image_gen.py": "b4345cf835e5b593b97df6bb2b70bda493b8a97eee4cabbc99b2fa57dba9b448",
+    "skills/.system/imagegen/scripts/image_gen.py": "259aba60704057e0ee07fc53a099f920dd8ab0f168ba71bd7f2d2240ad5f3833",
     "skills/.system/imagegen/scripts/remove_chroma_key.py": "a5893c4bd04b21abced33731ea89d2ac428e81d92a0368eb18ffbe4fda5253e2",
     "skills/.system/openai-docs/LICENSE.txt": "4dd13869245e356246a5b770723247bbb80a8f07a181d1d3d873a1734297cdb9",
     "skills/.system/openai-docs/SKILL.md": "aa6829e21df2223167c85d2e49b6337a7345c84c1033f1ec10182c7882b36d45",
@@ -98,6 +98,14 @@
     {
       "path": "skills/playwright/LICENSE.txt",
       "change": "Normalize CRLF to LF; preserve every license-text line."
+    },
+    {
+      "path": "skills/.system/imagegen/scripts/image_gen.py",
+      "change": "Preflight complete primary/derived output plans before API clients and requests; reject duplicate aliases even with force; reserve actual response files before non-force writes."
+    },
+    {
+      "path": "skills/.system/imagegen/references/cli.md",
+      "change": "Document collision preflight, portable duplicate rejection, read-only dry runs, force behavior, and concurrency limitations."
     }
   ]
 }

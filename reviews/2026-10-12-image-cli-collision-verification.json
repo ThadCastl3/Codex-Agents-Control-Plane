@@ -1,0 +1,76 @@
+{
+  "verified_at": "2026-10-13T02:05:34.127608+00:00",
+  "status": "passed",
+  "base_commit": "646628d",
+  "resolves": {
+    "report": "reviews/2026-10-12-bundled-skills-review.json",
+    "finding": "Image CLI checks primary and derived output collisions only after API execution",
+    "priority": 2
+  },
+  "authorization": "User explicitly chose offline mocked tests without credentials for this maintenance task.",
+  "implementation": [
+    "Generate and edit preflight every primary and derived destination before creating the SDK client.",
+    "Batch generation builds and validates all output plans before creating the async client or any request tasks.",
+    "Duplicate resolved paths, conservative case-only aliases, existing hardlinks, self-aliasing downscale suffixes, and invalid output parents/targets are rejected. Force permits distinct existing regular outputs but cannot bypass duplicate-plan validation.",
+    "The write path rechecks the complete output plan after the response, decodes/downscales before writing, and exclusively reserves actual response output files before writing bytes without force. Reservation failures clean up owned empty files after identity/size checks.",
+    "Short or empty responses do not reserve unused outputs; dry-run only previews requests and paths.",
+    "Late batch output failures obey continue/fail-fast behavior and cancellation cleanup without an unhandled SystemExit."
+  ],
+  "regression_tests": {
+    "path": "tests/test_image_cli_outputs.py",
+    "methods": 20,
+    "targeted_passed": 20,
+    "targeted_seconds": 0.076,
+    "baseline_initial_methods": 15,
+    "baseline_failing_methods": 11,
+    "baseline_reported_failures": 21,
+    "baseline_passing_methods": 4,
+    "baseline_errors": 0,
+    "coverage": [
+      "generate and edit primary/derived collisions",
+      "later multi-image and batch-job collisions before any client creation",
+      "duplicate batch destinations and primary/derived overlap",
+      "case-only names and canonical/hardlink aliases even with force",
+      "empty downscale suffix",
+      "forced distinct existing outputs",
+      "successful mocked generate/edit/batch",
+      "short and empty responses",
+      "read-only dry runs including existing outputs",
+      "late derived collision and reservation cleanup",
+      "batch continue/fail-fast and pending-task cancellation"
+    ]
+  },
+  "verification": {
+    "command": "env PYTHONPATH=/Users/axios/.cache/uv/archive-v0/4Xq0nrM-5CAZa8-zz41ty bin/verify.sh",
+    "tests_passed": 109,
+    "seconds": 86.1,
+    "doctor": {
+      "PASS": 121,
+      "WARN": 2
+    },
+    "syntax": "Bash and Python passed",
+    "whitespace": "git diff --check passed",
+    "independent_review": "Output planning, writes, batch handling, and final race/case-alias documentation reviewed; no remaining scoped finding."
+  },
+  "scope_guards": {
+    "live_api_calls": 0,
+    "credentials_created_or_used": false,
+    "sdk_and_downscale_mocked": true,
+    "temporary_test_outputs_only": true,
+    "vendor_manifest_files": 58,
+    "updated_vendor_paths": [
+      "skills/.system/imagegen/scripts/image_gen.py",
+      "skills/.system/imagegen/references/cli.md"
+    ],
+    "other_vendor_files_unchanged": 56,
+    "memory_index_preserved_and_excluded": true,
+    "hooks_unchanged": true
+  },
+  "limitations": [
+    "Offline tests validate CLI flow and filesystem behavior; they do not validate live Image API behavior or actual Pillow transformations.",
+    "Filesystem changes after request dispatch can still incur API work. Concurrent directory/path replacement is not locked out; cleanup checks identity and size before unlinking.",
+    "Forced writes and batch jobs are not transactional across arbitrary I/O failures or jobs.",
+    "Case-only destination differences are conservatively rejected on all platforms for portable output plans.",
+    "Full verification uses existing cached PyYAML 6.0.2 for optional bundled-helper tests; no dependency was installed. Exact upstream bundle revision remains unavailable."
+  ]
+}
